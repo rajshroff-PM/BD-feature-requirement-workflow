@@ -1,0 +1,5 @@
+{
+  "name": "Paathner Triage Matrix",
+  "description": "A feature triage matrix application to manage feature requests, assess impact, and prioritize development tasks for Paathner.",
+  "requestFramePermissions": []
+}
