@@ -35,6 +35,27 @@ export type BadgeColor = 'gray' | 'blue' | 'green' | 'yellow' | 'red' | 'purple'
 export type Role = 'BD' | 'BA' | 'PM' | 'DEV';
 
 export interface User {
-  name: string;
   role: Role;
+}
+
+export interface Sprint {
+  id: string;
+  name: string;
+  goal: string;
+  startDate: string;
+  endDate: string;
+  capacity: number; // Total man-days
+  status: 'Active' | 'Planned' | 'Completed';
+}
+
+export interface Task {
+  id: string;
+  sprintId: string;
+  ticketId?: string; // Linked backend ticket
+  title: string;
+  assignee: string; // e.g., 'Dave (Dev)'
+  startDate: string;
+  endDate: string;
+  effort: number; // Days
+  status: 'To Do' | 'In Progress' | 'Done';
 }
