@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Plus,
   FileSpreadsheet,
@@ -10,12 +10,14 @@ import {
   Search,
   CheckCircle2,
   Clock,
-  User,
-  LogOut
+  User as UserIcon,
+  LogOut,
+  Loader2
 } from 'lucide-react';
 import { Badge } from './components/Badge';
 import { LoginScreen } from './components/LoginScreen';
-import { Ticket, BadgeColor, User as UserType, Role } from './types';
+import { Ticket, BadgeColor, User as UserType } from './types';
+import { supabase } from './supabaseClient';
 
 // Initial state for a new ticket
 const initialTicketState: Ticket = {
@@ -43,55 +45,114 @@ const initialTicketState: Ticket = {
 };
 
 export default function FeatureTriageApp() {
-  // Mock Data
-  const [tickets, setTickets] = useState<Ticket[]>([
-    {
-      id: 'REQ-001',
-      requestType: 'Enhancement',
-      title: 'Flash Sale Pop-up',
-      source: 'Zara (Phoenix Mall)',
-      problem: 'Users miss sales on kiosk.',
-      severity: 'High',
-      value: 'Increase footfall by 15%.',
-      srsLink: 'http://sharepoint/srs/req-001',
-      analysis: 'Requires WebSocket integration for real-time updates.',
-      baStatus: 'Analysis Complete',
-      pmStatus: 'Approved',
-      // priority: 'High', // Removed
-      productAlignment: 'Yes - Improves navigation',
-      techImpactBackend: 'Medium',
-      techImpactMobile: 'High',
-      situmDependency: 'Yes',
-      effort: 'L',
-      riskLevel: 'Medium',
-      sprintCycle: 'Sprint 24',
-      deliveryDate: '2024-11-15',
-      devStatus: 'Scheduled',
-      requestedDate: '2024-10-30'
-    },
-    {
-      id: 'REQ-002',
-      requestType: 'New',
-      title: 'VIP Lounge QR',
-      source: 'Airport Management',
-      problem: 'Slow boarding pass check.',
-      severity: 'Medium',
-      value: 'Reduce entry time by 40s.',
-      baStatus: 'Pending',
-      pmStatus: 'Pending',
-      devStatus: 'Pending',
-      requestedDate: '2024-12-01'
-    }
-  ]);
-
   const [user, setUser] = useState<UserType | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState<Ticket>(initialTicketState);
   const [activeTab, setActiveTab] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // 1. Auth & Profile Handling
+  useEffect(() => {
+    // Check active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) fetchProfile(session.user.id);
+      else setLoading(false);
+    });
+
+    // Listen for changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) fetchProfile(session.user.id);
+      else {
+        setUser(null);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        setUser({ name: data.full_name, role: data.role });
+        fetchTickets();
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 2. Data Fetching
+  const fetchTickets = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Map DB fields to TS Interface (snake_case to camelCase mapping needed if strictly typed, 
+      // but for now we rely on the DB columns matching or simple mapping)
+      // Note: Our DB columns are snake_case, frontend is camelCase.
+      // We need a mapper.
+      const mappedTickets: Ticket[] = (data || []).map(t => ({
+        id: t.id,
+        requestType: t.request_type,
+        title: t.title,
+        source: t.source,
+        problem: t.problem,
+        severity: t.severity,
+        value: t.value || '',
+        requestedDate: t.requested_date,
+
+        baStatus: t.ba_status,
+        srsLink: t.srs_link,
+        analysis: t.analysis,
+
+        pmStatus: t.pm_status,
+        productAlignment: t.product_alignment,
+        techImpactBackend: t.tech_impact_backend,
+        techImpactMobile: t.tech_impact_mobile,
+        situmDependency: t.situm_dependency,
+        effort: t.effort,
+        riskLevel: t.risk_level,
+        sprintCycle: t.sprint_cycle,
+
+        devStatus: t.dev_status,
+        deliveryDate: t.delivery_date,
+        devComments: t.dev_comments
+      }));
+
+      setTickets(mappedTickets);
+    } catch (error) {
+      console.error('Error fetching tickets:', error);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
 
   const openNewTicket = () => {
+    // Generate ID logic could be backend side, but for now:
     const newId = `REQ-${String(tickets.length + 1).padStart(3, '0')}`;
     setFormData({ ...initialTicketState, id: newId });
     setCurrentTicket(null);
@@ -117,13 +178,54 @@ export default function FeatureTriageApp() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const saveTicket = () => {
-    if (currentTicket) {
-      setTickets(prev => prev.map(t => t.id === formData.id ? formData : t));
-    } else {
-      setTickets(prev => [...prev, formData]);
+  const saveTicket = async () => {
+    setIsSaving(true);
+    try {
+      // Map camelCase to snake_case for DB
+      const dbPayload = {
+        id: formData.id,
+        updated_at: new Date().toISOString(),
+
+        title: formData.title,
+        request_type: formData.requestType,
+        source: formData.source,
+        problem: formData.problem,
+        severity: formData.severity,
+        value: formData.value,
+        requested_date: formData.requestedDate || null, // Handle empty strings for dates
+
+        ba_status: formData.baStatus,
+        srs_link: formData.srsLink,
+        analysis: formData.analysis,
+
+        pm_status: formData.pmStatus,
+        product_alignment: formData.productAlignment,
+        tech_impact_backend: formData.techImpactBackend,
+        tech_impact_mobile: formData.techImpactMobile,
+        situm_dependency: formData.situmDependency,
+        effort: formData.effort,
+        risk_level: formData.riskLevel,
+        sprint_cycle: formData.sprintCycle,
+
+        dev_status: formData.devStatus,
+        delivery_date: formData.deliveryDate || null,
+        dev_comments: formData.devComments
+      };
+
+      const { error } = await supabase
+        .from('tickets')
+        .upsert(dbPayload);
+
+      if (error) throw error;
+
+      await fetchTickets(); // Refresh data
+      setIsModalOpen(false);
+    } catch (error: any) {
+      console.error('Error saving ticket:', error);
+      alert('Failed to save ticket: ' + error.message);
+    } finally {
+      setIsSaving(false);
     }
-    setIsModalOpen(false);
   };
 
   const exportToCSV = () => {
@@ -229,8 +331,19 @@ export default function FeatureTriageApp() {
     );
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center">
+          <Loader2 className="h-10 w-10 text-indigo-600 animate-spin" />
+          <p className="mt-4 text-gray-500">Loading Paathner...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
-    return <LoginScreen onLogin={setUser} />;
+    return <LoginScreen />;
   }
 
   return (
@@ -246,9 +359,9 @@ export default function FeatureTriageApp() {
           </div>
           <div className="flex items-center space-x-4">
             <div className="flex items-center px-3 py-1 bg-gray-100 rounded-full text-sm font-medium text-gray-600">
-              <User className="w-4 h-4 mr-2" /> {user.name}
+              <UserIcon className="w-4 h-4 mr-2" /> {user.name} ({user.role})
             </div>
-            <button onClick={() => setUser(null)} className="text-gray-500 hover:text-red-600 transition-colors" title="Logout">
+            <button onClick={handleLogout} className="text-gray-500 hover:text-red-600 transition-colors" title="Logout">
               <LogOut className="w-5 h-5" />
             </button>
             <div className="w-px h-6 bg-gray-300 mx-2"></div>
@@ -311,6 +424,13 @@ export default function FeatureTriageApp() {
                   </td>
                 </tr>
               ))}
+              {tickets.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                    No tickets found. Click "New Request" to create one.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -363,7 +483,7 @@ export default function FeatureTriageApp() {
                     <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 mb-4 flex justify-between items-center">
                       <div>
                         <h4 className="flex items-center text-blue-800 font-bold">
-                          <User className="w-4 h-4 mr-2" /> Stage 1: Business Requirement
+                          <UserIcon className="w-4 h-4 mr-2" /> Stage 1: Business Requirement
                         </h4>
                         <p className="text-sm text-blue-600 mt-1">Define the "Why" and "What" of the feature.</p>
                       </div>
@@ -538,8 +658,13 @@ export default function FeatureTriageApp() {
               {/* Footer */}
               <div className="bg-gray-50 px-6 py-4 flex flex-row-reverse border-t">
                 {canEdit(activeTab) && (
-                  <button onClick={saveTicket} className="inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 sm:ml-3 sm:w-auto sm:text-sm">
-                    <Save className="h-4 w-4 mr-2" /> Save & Close
+                  <button
+                    onClick={saveTicket}
+                    disabled={isSaving}
+                    className="inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                  >
+                    {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                    {isSaving ? 'Saving...' : 'Save & Close'}
                   </button>
                 )}
                 {!canEdit(activeTab) && (
