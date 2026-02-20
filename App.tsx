@@ -60,63 +60,10 @@ export default function FeatureTriageApp() {
 
   // New State for Sprint Planner
   const [currentView, setCurrentView] = useState<'triage' | 'sprint-planner'>('triage');
-  const [sprints, setSprints] = useState<Sprint[]>([
-    {
-      id: 'SPRINT-23',
-      name: 'Sprint 23',
-      goal: 'Backend optimization and bug fixes.',
-      startDate: '2024-10-01',
-      endDate: '2024-10-14',
-      capacity: 20,
-      status: 'Completed'
-    },
-    {
-      id: 'SPRINT-24',
-      name: 'Sprint 24',
-      goal: 'Feature: One-Click Checkout & UI Revamp',
-      startDate: '2024-10-15',
-      endDate: '2024-10-29',
-      capacity: 25,
-      status: 'Active'
-    },
-    {
-      id: 'SPRINT-25',
-      name: 'Sprint 25',
-      goal: 'Holiday Season Prep & Load Testing',
-      startDate: '2024-10-30',
-      endDate: '2024-11-12',
-      capacity: 20,
-      status: 'Planned'
-    }
-  ]);
+  const [sprints, setSprints] = useState<Sprint[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
 
-  // Automatically cycle sprint statuses based on dates
-  useEffect(() => {
-    setSprints(currentSprints => {
-      const todayStr = new Date().toISOString().split('T')[0];
-      let hasChanges = false;
-
-      const updatedSprints = currentSprints.map(sprint => {
-        let newStatus = sprint.status;
-        if (sprint.endDate < todayStr) {
-          newStatus = 'Completed';
-        } else if (sprint.startDate <= todayStr && sprint.endDate >= todayStr) {
-          newStatus = 'Active';
-        } else if (sprint.startDate > todayStr) {
-          newStatus = 'Planned';
-        }
-
-        if (newStatus !== sprint.status) {
-          hasChanges = true;
-          return { ...sprint, status: newStatus as 'Active' | 'Planned' | 'Completed' };
-        }
-        return sprint;
-      });
-
-      return hasChanges ? updatedSprints : currentSprints;
-    });
-  }, []);
+  // 1. Auth & Profile Handling
 
   // 1. Auth & Profile Handling
   useEffect(() => {
@@ -152,11 +99,161 @@ export default function FeatureTriageApp() {
       if (data) {
         setUser({ name: data.full_name, role: data.role });
         fetchTickets();
+        fetchSprints();
+        fetchTasks();
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSprints = async () => {
+    try {
+      const { data, error } = await supabase.from('sprints').select('*').order('created_at', { ascending: true });
+      if (error) throw error;
+
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      const mappedSprints: Sprint[] = (data || []).map(s => {
+        // Auto-resolve dynamic status based on date
+        let newStatus = s.status;
+        if (s.end_date < todayStr) {
+          newStatus = 'Completed';
+        } else if (s.start_date <= todayStr && s.end_date >= todayStr) {
+          newStatus = 'Active';
+        } else if (s.start_date > todayStr) {
+          newStatus = 'Planned';
+        }
+
+        return {
+          id: s.id,
+          name: s.name,
+          goal: s.goal,
+          startDate: s.start_date,
+          endDate: s.end_date,
+          capacity: s.capacity,
+          status: newStatus
+        };
+      });
+
+      console.log('Successfully fetched sprints:', mappedSprints.length);
+      setSprints(mappedSprints);
+    } catch (err) {
+      console.error('Error fetching sprints:', err);
+    }
+  };
+
+  const fetchTasks = async () => {
+    try {
+      const { data, error } = await supabase.from('tasks').select('*').order('created_at', { ascending: true });
+      if (error) throw error;
+      const mappedTasks: Task[] = (data || []).map(t => ({
+        id: t.id,
+        sprintId: t.sprint_id,
+        ticketId: t.ticket_id,
+        title: t.title,
+        assignee: t.assignee,
+        startDate: t.start_date,
+        endDate: t.end_date,
+        effort: t.effort,
+        status: t.status
+      }));
+      setTasks(mappedTasks);
+    } catch (err) {
+      console.error('Error fetching tasks:', err);
+    }
+  };
+
+  const handleCreateSprint = async (newSprint: Sprint) => {
+    try {
+      setSprints(prev => [...prev, newSprint]); // optimistic
+      const { error } = await supabase.from('sprints').insert([{
+        id: newSprint.id,
+        name: newSprint.name,
+        goal: newSprint.goal,
+        start_date: newSprint.startDate,
+        end_date: newSprint.endDate,
+        capacity: newSprint.capacity,
+        status: newSprint.status
+      }]);
+      if (error) throw error;
+    } catch (err: any) {
+      console.error('Error creating sprint:', err);
+      alert('Failed to save sprint to database: ' + (err.message || JSON.stringify(err)));
+      fetchSprints();
+    }
+  };
+
+  const handleEditSprint = async (updatedSprint: Sprint) => {
+    try {
+      setSprints(prev => prev.map(s => s.id === updatedSprint.id ? updatedSprint : s)); // optimistic
+      const { error } = await supabase.from('sprints').update({
+        name: updatedSprint.name,
+        goal: updatedSprint.goal,
+        start_date: updatedSprint.startDate,
+        end_date: updatedSprint.endDate,
+        capacity: updatedSprint.capacity,
+        status: updatedSprint.status
+      }).eq('id', updatedSprint.id);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error updating sprint:', err);
+      fetchSprints();
+    }
+  };
+
+  const handleDeleteSprint = async (sprintId: string) => {
+    try {
+      setSprints(prev => prev.filter(s => s.id !== sprintId)); // optimistic
+      setTasks(prev => prev.filter(t => t.sprintId !== sprintId)); // optimistic
+      const { error } = await supabase.from('sprints').delete().eq('id', sprintId);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error deleting sprint:', err);
+      fetchSprints();
+      fetchTasks();
+    }
+  };
+
+  const handleAddTask = async (newTask: Task) => {
+    try {
+      setTasks(prev => [...prev, newTask]); // optimistic
+      const { error } = await supabase.from('tasks').insert([{
+        id: newTask.id,
+        sprint_id: newTask.sprintId,
+        ticket_id: newTask.ticketId || null,
+        title: newTask.title,
+        assignee: newTask.assignee,
+        start_date: newTask.startDate,
+        end_date: newTask.endDate,
+        effort: newTask.effort,
+        status: newTask.status
+      }]);
+      if (error) throw error;
+    } catch (err: any) {
+      console.error('Error adding task:', err);
+      alert('Failed to save task to database: ' + (err.message || JSON.stringify(err)));
+      fetchTasks();
+    }
+  };
+
+  const handleEditTask = async (updatedTask: Task) => {
+    try {
+      setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t)); // optimistic
+      const { error } = await supabase.from('tasks').update({
+        title: updatedTask.title,
+        assignee: updatedTask.assignee,
+        start_date: updatedTask.startDate,
+        end_date: updatedTask.endDate,
+        effort: updatedTask.effort,
+        status: updatedTask.status
+      }).eq('id', updatedTask.id);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error updating task:', err);
+      fetchTasks();
     }
   };
 
@@ -319,7 +416,20 @@ export default function FeatureTriageApp() {
             };
 
             setTasks(prev => [...prev, newTask]);
-            // console.log("Auto-created task:", newTask);
+
+            // Insert auto-created task into Supabase
+            const { error: taskError } = await supabase.from('tasks').insert([{
+              id: newTask.id,
+              sprint_id: newTask.sprintId,
+              ticket_id: newTask.ticketId,
+              title: newTask.title,
+              assignee: newTask.assignee,
+              start_date: newTask.startDate,
+              end_date: newTask.endDate,
+              effort: newTask.effort,
+              status: newTask.status
+            }]);
+            if (taskError) console.error("Error auto-creating task:", taskError);
           }
         }
       }
@@ -525,14 +635,11 @@ export default function FeatureTriageApp() {
           sprints={sprints}
           tasks={tasks}
           tickets={tickets}
-          onCreateSprint={(newSprint) => setSprints([...sprints, newSprint])}
-          onAddTask={(newTask) => setTasks([...tasks, newTask])}
-          onEditSprint={(updatedSprint) => setSprints(sprints.map(s => s.id === updatedSprint.id ? updatedSprint : s))}
-          onEditTask={(updatedTask) => setTasks(tasks.map(t => t.id === updatedTask.id ? updatedTask : t))}
-          onDeleteSprint={(sprintId) => {
-            setSprints(currentSprints => currentSprints.filter(s => s.id !== sprintId));
-            setTasks(currentTasks => currentTasks.filter(t => t.sprintId !== sprintId));
-          }}
+          onCreateSprint={handleCreateSprint}
+          onAddTask={handleAddTask}
+          onEditSprint={handleEditSprint}
+          onEditTask={handleEditTask}
+          onDeleteSprint={handleDeleteSprint}
         />
       ) : (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
