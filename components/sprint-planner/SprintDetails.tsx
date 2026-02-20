@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Sprint, Task, Ticket } from '../../types';
-import { ChevronLeft, Plus, Calendar, User, Pencil, Save } from 'lucide-react';
+import { ChevronLeft, Plus, Calendar, User, Pencil, Save, Trash2 } from 'lucide-react';
 import { AddTaskModal } from './AddTaskModal';
 import { EditTaskModal } from './EditTaskModal';
 import { CreateSprintModal } from './CreateSprintModal';
@@ -14,9 +14,10 @@ interface SprintDetailsProps {
     onAddTask: (task: Task) => void;
     onEditSprint: (sprint: Sprint) => void;
     onEditTask: (task: Task) => void;
+    onDeleteSprint?: (sprintId: string) => void;
 }
 
-export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, backlog, onBack, onAddTask, onEditSprint, onEditTask }) => {
+export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, backlog, onBack, onAddTask, onEditSprint, onEditTask, onDeleteSprint }) => {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isEditSprintModalOpen, setIsEditSprintModalOpen] = useState(false);
     const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -44,13 +45,26 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                             <div className="flex items-center space-x-3">
                                 <h2 className="text-2xl font-bold text-gray-900">{sprint.name}</h2>
                                 <Badge color={sprint.status === 'Active' ? 'green' : 'blue'}>{sprint.status}</Badge>
-                                <button
-                                    onClick={() => setIsEditSprintModalOpen(true)}
-                                    className="p-1 text-gray-400 hover:text-indigo-600 transition-colors"
-                                    title="Edit Sprint"
-                                >
-                                    <Pencil className="w-4 h-4" />
-                                </button>
+                                <div className="flex space-x-1">
+                                    <button
+                                        onClick={() => setIsEditSprintModalOpen(true)}
+                                        className="p-1 text-gray-400 hover:text-indigo-600 transition-colors"
+                                        title="Edit Sprint"
+                                    >
+                                        <Pencil className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (window.confirm(`Are you sure you want to delete the sprint "${sprint.name}"? All associated tasks will be removed.`)) {
+                                                if (onDeleteSprint) onDeleteSprint(sprint.id);
+                                            }
+                                        }}
+                                        className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                        title="Delete Sprint"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
                             </div>
                             <p className="text-sm text-gray-500 mt-1">{sprint.goal}</p>
                         </div>

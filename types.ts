@@ -1,5 +1,6 @@
 export interface Ticket {
   id: string;
+  createdAt?: string; // Triage creation date
   // BD Fields
   requestType: 'New' | 'Enhancement';
   title: string;

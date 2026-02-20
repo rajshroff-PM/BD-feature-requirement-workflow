@@ -13,9 +13,10 @@ interface SprintPlannerProps {
     onAddTask: (task: Task) => void;
     onEditSprint: (sprint: Sprint) => void;
     onEditTask: (task: Task) => void;
+    onDeleteSprint?: (sprintId: string) => void;
 }
 
-export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, tickets, onCreateSprint, onAddTask, onEditSprint, onEditTask }) => {
+export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, tickets, onCreateSprint, onAddTask, onEditSprint, onEditTask, onDeleteSprint }) => {
     const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -42,6 +43,12 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, ti
                 onAddTask={onAddTask}
                 onEditSprint={onEditSprint}
                 onEditTask={onEditTask}
+                onDeleteSprint={(sprintId) => {
+                    setSelectedSprintId(null);
+                    if (onDeleteSprint) {
+                        onDeleteSprint(sprintId);
+                    }
+                }}
             />
         );
     }
@@ -135,7 +142,7 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, ti
                 <h3 className="text-lg font-medium text-gray-900 mb-4 px-1">Past Sprints</h3>
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 divide-y divide-gray-100">
                     {pastSprints.map(sprint => (
-                        <div key={sprint.id} className="p-4 flex justify-between items-center hover:bg-gray-50">
+                        <div key={sprint.id} onClick={() => setSelectedSprintId(sprint.id)} className="p-4 flex justify-between items-center hover:bg-gray-50 cursor-pointer">
                             <div>
                                 <span className="font-medium text-gray-900">{sprint.name}</span>
                                 <span className="ml-4 text-xs text-gray-500">{sprint.startDate} - {sprint.endDate}</span>

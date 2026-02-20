@@ -91,6 +91,33 @@ export default function FeatureTriageApp() {
   ]);
   const [tasks, setTasks] = useState<Task[]>([]);
 
+  // Automatically cycle sprint statuses based on dates
+  useEffect(() => {
+    setSprints(currentSprints => {
+      const todayStr = new Date().toISOString().split('T')[0];
+      let hasChanges = false;
+
+      const updatedSprints = currentSprints.map(sprint => {
+        let newStatus = sprint.status;
+        if (sprint.endDate < todayStr) {
+          newStatus = 'Completed';
+        } else if (sprint.startDate <= todayStr && sprint.endDate >= todayStr) {
+          newStatus = 'Active';
+        } else if (sprint.startDate > todayStr) {
+          newStatus = 'Planned';
+        }
+
+        if (newStatus !== sprint.status) {
+          hasChanges = true;
+          return { ...sprint, status: newStatus as 'Active' | 'Planned' | 'Completed' };
+        }
+        return sprint;
+      });
+
+      return hasChanges ? updatedSprints : currentSprints;
+    });
+  }, []);
+
   // 1. Auth & Profile Handling
   useEffect(() => {
     // Check active session
@@ -149,6 +176,7 @@ export default function FeatureTriageApp() {
       // We need a mapper.
       const mappedTickets: Ticket[] = (data || []).map(t => ({
         id: t.id,
+        createdAt: t.created_at,
         requestType: t.request_type,
         title: t.title,
         source: t.source,
@@ -501,6 +529,10 @@ export default function FeatureTriageApp() {
           onAddTask={(newTask) => setTasks([...tasks, newTask])}
           onEditSprint={(updatedSprint) => setSprints(sprints.map(s => s.id === updatedSprint.id ? updatedSprint : s))}
           onEditTask={(updatedTask) => setTasks(tasks.map(t => t.id === updatedTask.id ? updatedTask : t))}
+          onDeleteSprint={(sprintId) => {
+            setSprints(currentSprints => currentSprints.filter(s => s.id !== sprintId));
+            setTasks(currentTasks => currentTasks.filter(t => t.sprintId !== sprintId));
+          }}
         />
       ) : (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -509,6 +541,7 @@ export default function FeatureTriageApp() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">ID & Title</th>
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Date</th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Source (BD)</th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">BA Status</th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">PM Status</th>
@@ -524,6 +557,9 @@ export default function FeatureTriageApp() {
                         <span className="text-xs text-gray-400 font-mono">{ticket.id}</span>
                         <span className="text-sm font-medium text-gray-900">{ticket.title}</span>
                       </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
+                      {ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : '-'}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">{ticket.source}</td>
                     <td className="px-6 py-4"><Badge color={getStatusColor(ticket.baStatus)}>{ticket.baStatus}</Badge></td>
@@ -770,7 +806,51 @@ export default function FeatureTriageApp() {
                         </div>
                         {!canEdit(3) && <Badge color="gray">Read Only</Badge>}
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                      {/* Requirement Overview Section for Dev */}
+                      <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm">
+                        <h5 className="text-sm font-bold text-gray-800 mb-3 border-b pb-2">Requirement Overview</h5>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <span className="block text-xs font-medium text-gray-500 uppercase">SRS Link</span>
+                            {formData.srsLink ? (
+                              <a href={formData.srsLink} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
+                                {formData.srsLink}
+                              </a>
+                            ) : (
+                              <span className="text-sm text-gray-500 italic">Not provided</span>
+                            )}
+                          </div>
+                          <div>
+                            <span className="block text-xs font-medium text-gray-500 uppercase">Assigned Sprint</span>
+                            <span className="text-sm text-gray-900 font-medium">
+                              {sprints.find(s => s.id === formData.sprintCycle)?.name || <span className="text-gray-500 italic">None Assigned</span>}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-xs font-medium text-gray-500 uppercase">Requested Timeline</span>
+                            <span className="text-sm text-gray-900 font-medium">
+                              {formData.requestedDate ? new Date(formData.requestedDate).toLocaleDateString() : <span className="text-gray-500 italic">Not set</span>}
+                            </span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="block text-xs font-medium text-gray-500 uppercase">Functional Analysis Notes</span>
+                            <div className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 p-3 rounded-md mt-1 border border-gray-100 min-h-[60px]">
+                              {formData.analysis ? formData.analysis : <span className="text-gray-400 italic">No notes provided.</span>}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="block text-xs font-medium text-gray-500 uppercase">Tech Impact (Backend)</span>
+                            <span className="text-sm text-gray-900">{formData.techImpactBackend || '-'}</span>
+                          </div>
+                          <div>
+                            <span className="block text-xs font-medium text-gray-500 uppercase">Tech Impact (Mobile)</span>
+                            <span className="text-sm text-gray-900">{formData.techImpactMobile || '-'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2 border-t">
                         <div>
                           {renderInput('date', 'deliveryDate', 'Delivery Date', undefined, undefined, 'Select target delivery date')}
                         </div>
