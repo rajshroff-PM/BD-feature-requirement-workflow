@@ -257,6 +257,17 @@ export default function FeatureTriageApp() {
     }
   };
 
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      setTasks(prev => prev.filter(t => t.id !== taskId)); // optimistic
+      const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error deleting task:', err);
+      fetchTasks();
+    }
+  };
+
   // 2. Data Fetching
   const fetchTickets = async () => {
     try {
@@ -639,6 +650,7 @@ export default function FeatureTriageApp() {
           onAddTask={handleAddTask}
           onEditSprint={handleEditSprint}
           onEditTask={handleEditTask}
+          onDeleteTask={handleDeleteTask}
           onDeleteSprint={handleDeleteSprint}
         />
       ) : (

@@ -14,10 +14,11 @@ interface SprintDetailsProps {
     onAddTask: (task: Task) => void;
     onEditSprint: (sprint: Sprint) => void;
     onEditTask: (task: Task) => void;
+    onDeleteTask: (taskId: string) => void;
     onDeleteSprint?: (sprintId: string) => void;
 }
 
-export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, backlog, onBack, onAddTask, onEditSprint, onEditTask, onDeleteSprint }) => {
+export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, backlog, onBack, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint }) => {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isEditSprintModalOpen, setIsEditSprintModalOpen] = useState(false);
     const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -194,6 +195,10 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                     onClose={() => setEditingTask(null)}
                     onSave={(updatedTask) => {
                         onEditTask(updatedTask);
+                        setEditingTask(null);
+                    }}
+                    onDelete={(taskId) => {
+                        onDeleteTask(taskId);
                         setEditingTask(null);
                     }}
                 />

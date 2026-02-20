@@ -145,20 +145,18 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, on
                                 <p className="text-xs text-gray-500 mt-1">e.g. 2 Devs x 10 Days = 20 Man-Days</p>
                             </div>
 
-                            {sprint && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Status</label>
-                                    <select
-                                        value={status}
-                                        onChange={(e) => setStatus(e.target.value as Sprint['status'])}
-                                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-indigo-500 focus:border-indigo-500"
-                                    >
-                                        <option value="Planned">Planned</option>
-                                        <option value="Active">Active</option>
-                                        <option value="Completed">Completed</option>
-                                    </select>
-                                </div>
-                            )}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Status</label>
+                                <select
+                                    value={status}
+                                    onChange={(e) => setStatus(e.target.value as Sprint['status'])}
+                                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                >
+                                    <option value="Planned">Planned</option>
+                                    <option value="Active">Active</option>
+                                    <option value="Completed">Completed</option>
+                                </select>
+                            </div>
 
                             <div className="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
                                 <button

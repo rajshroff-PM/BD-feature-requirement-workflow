@@ -13,10 +13,11 @@ interface SprintPlannerProps {
     onAddTask: (task: Task) => void;
     onEditSprint: (sprint: Sprint) => void;
     onEditTask: (task: Task) => void;
+    onDeleteTask: (taskId: string) => void;
     onDeleteSprint?: (sprintId: string) => void;
 }
 
-export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, tickets, onCreateSprint, onAddTask, onEditSprint, onEditTask, onDeleteSprint }) => {
+export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, tickets, onCreateSprint, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint }) => {
     const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -43,6 +44,7 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, ti
                 onAddTask={onAddTask}
                 onEditSprint={onEditSprint}
                 onEditTask={onEditTask}
+                onDeleteTask={onDeleteTask}
                 onDeleteSprint={(sprintId) => {
                     setSelectedSprintId(null);
                     if (onDeleteSprint) {

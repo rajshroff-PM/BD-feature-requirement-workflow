@@ -11,7 +11,7 @@ create table profiles (
   updated_at timestamp with time zone
 );
 
--- 2. TICKETS TABLE
+-- 2. TICKETS TABLE 
 create table tickets (
   id text primary key, -- e.g. "REQ-001"
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
