@@ -6,7 +6,6 @@ import {
   AlertCircle,
   X,
   Save,
-  Download,
   Search,
   CheckCircle2,
   Clock,
@@ -37,6 +36,7 @@ const initialTicketState: Ticket = {
 
   // PM Defaults
   productAlignment: '',
+  designReferenceLink: '',
   techImpactBackend: undefined,
   techImpactMobile: undefined,
   situmDependency: undefined,
@@ -299,6 +299,7 @@ export default function FeatureTriageApp() {
 
         pmStatus: t.pm_status,
         productAlignment: t.product_alignment,
+        designReferenceLink: t.design_reference_link,
         techImpactBackend: t.tech_impact_backend,
         techImpactMobile: t.tech_impact_mobile,
         situmDependency: t.situm_dependency,
@@ -371,6 +372,7 @@ export default function FeatureTriageApp() {
 
         pm_status: formData.pmStatus,
         product_alignment: formData.productAlignment,
+        design_reference_link: formData.designReferenceLink,
         tech_impact_backend: formData.techImpactBackend,
         tech_impact_mobile: formData.techImpactMobile,
         situm_dependency: formData.situmDependency,
@@ -454,33 +456,7 @@ export default function FeatureTriageApp() {
     }
   };
 
-  const exportToCSV = () => {
-    const headers = [
-      "ID", "Title", "Source", "Problem", "Value",
-      "BA Status", "SRS Link", "Analysis",
-      "PM Status", "Product Alignment", "Backend Impact", "Mobile Impact", "Situm Dep", "Effort", "Risk", "Sprint",
-      "Dev Status", "Delivery Date", "Comments"
-    ];
 
-    const rows = tickets.map(t => [
-      t.id, t.title, t.source, t.problem, t.value,
-      t.baStatus, t.srsLink, t.analysis,
-      t.pmStatus, t.productAlignment, t.techImpactBackend, t.techImpactMobile, t.situmDependency, t.effort, t.riskLevel, t.sprintCycle,
-      t.devStatus, t.deliveryDate, t.devComments
-    ]);
-
-    let csvContent = "data:text/csv;charset=utf-8,"
-      + headers.join(",") + "\n"
-      + rows.map(e => e.map(cell => `"${String(cell || '').replace(/"/g, '""')}"`).join(",")).join("\n");
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "feature_matrix.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const getStatusColor = (status: string): BadgeColor => {
     if (status === 'Approved' || status === 'Analysis Complete' || status === 'Scheduled' || status === 'Done') return 'green';
@@ -594,7 +570,7 @@ export default function FeatureTriageApp() {
               >
                 Triage Matrix
               </button>
-              {user.role === 'PM' && (
+              {(user.role === 'PM' || user.role === 'DEV') && (
                 <button
                   onClick={() => setCurrentView('sprint-planner')}
                   className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${currentView === 'sprint-planner'
@@ -606,37 +582,46 @@ export default function FeatureTriageApp() {
                 </button>
               )}
             </div>
-            <div className="flex items-center text-sm text-gray-700">
+            <div className="flex items-center text-sm text-gray-700 pr-4">
               <span className="mr-2">Welcome, <strong>{user.name}</strong></span>
               <Badge color="blue">{user.role}</Badge>
             </div>
-            <button onClick={handleLogout} className="text-gray-400 hover:text-red-500">
-              <LogOut className="w-5 h-5" />
-            </button>
-          </div>    <div className="w-px h-6 bg-gray-300 mx-2"></div>
-
-          <div className="relative hidden md:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search..."
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-64"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
           </div>
-          <button onClick={exportToCSV} className="text-gray-600 hover:text-gray-900 px-3 py-2">
-            <Download className="h-5 w-5" />
-          </button>
-          {user.role === 'BD' && (
+
+          <div className="flex items-center space-x-3">
+
+            <div className="relative hidden md:block">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search tasks..."
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-64"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            {user.role === 'BD' && (
+              <button
+                onClick={openNewTicket}
+                className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow-sm transition-all"
+              >
+                <Plus className="h-4 w-4" />
+                <span>New Request</span>
+              </button>
+            )}
+
+            <div className="w-px h-6 bg-gray-300 mx-2 hidden md:block"></div>
+
             <button
-              onClick={openNewTicket}
-              className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow-sm transition-all"
+              onClick={handleLogout}
+              className="flex items-center space-x-2 text-gray-500 hover:text-red-600 transition-colors px-2 py-2 rounded-lg hover:bg-red-50"
+              title="Logout"
             >
-              <Plus className="h-4 w-4" />
-              <span>New Request</span>
+              <LogOut className="w-5 h-5" />
+              <span className="hidden sm:inline text-sm font-medium">Logout</span>
             </button>
-          )}
+          </div>
         </div>
       </header>
 
@@ -652,6 +637,7 @@ export default function FeatureTriageApp() {
           onEditTask={handleEditTask}
           onDeleteTask={handleDeleteTask}
           onDeleteSprint={handleDeleteSprint}
+          isReadOnly={user?.role !== 'PM'}
         />
       ) : (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -683,7 +669,12 @@ export default function FeatureTriageApp() {
                     <td className="px-6 py-4 text-sm text-gray-600">{ticket.source}</td>
                     <td className="px-6 py-4"><Badge color={getStatusColor(ticket.baStatus)}>{ticket.baStatus}</Badge></td>
                     <td className="px-6 py-4"><Badge color={getStatusColor(ticket.pmStatus)}>{ticket.pmStatus}</Badge></td>
-                    <td className="px-6 py-4 text-sm font-mono text-gray-700">{ticket.deliveryDate || '-'}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-2 items-start">
+                        <span className="text-sm font-mono text-gray-700">{ticket.deliveryDate || '-'}</span>
+                        <Badge color={getStatusColor(ticket.devStatus)}>{ticket.devStatus}</Badge>
+                      </div>
+                    </td>
                     <td className="px-6 py-4 text-right">
                       <ChevronRight className="h-4 w-4 text-gray-400 inline" />
                     </td>
@@ -862,6 +853,9 @@ export default function FeatureTriageApp() {
                         <div className="col-span-2">
                           {renderInput('text', 'productAlignment', 'Product Alignment', undefined, undefined, 'Does this align with goals? (Yes/No - Justification)')}
                         </div>
+                        <div className="col-span-2">
+                          {renderInput('text', 'designReferenceLink', 'Design Reference Link (Figma)', undefined, undefined, 'e.g. https://www.figma.com/file/...')}
+                        </div>
 
                         {/* Technical Impact */}
                         <div className="col-span-2 md:col-span-1">
@@ -935,6 +929,16 @@ export default function FeatureTriageApp() {
                             {formData.srsLink ? (
                               <a href={formData.srsLink} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
                                 {formData.srsLink}
+                              </a>
+                            ) : (
+                              <span className="text-sm text-gray-500 italic">Not provided</span>
+                            )}
+                          </div>
+                          <div>
+                            <span className="block text-xs font-medium text-gray-500 uppercase">Design Reference Link</span>
+                            {formData.designReferenceLink ? (
+                              <a href={formData.designReferenceLink} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
+                                {formData.designReferenceLink}
                               </a>
                             ) : (
                               <span className="text-sm text-gray-500 italic">Not provided</span>

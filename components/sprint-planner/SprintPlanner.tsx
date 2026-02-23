@@ -15,9 +15,10 @@ interface SprintPlannerProps {
     onEditTask: (task: Task) => void;
     onDeleteTask: (taskId: string) => void;
     onDeleteSprint?: (sprintId: string) => void;
+    isReadOnly?: boolean;
 }
 
-export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, tickets, onCreateSprint, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint }) => {
+export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, tickets, onCreateSprint, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint, isReadOnly = false }) => {
     const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -51,6 +52,7 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, ti
                         onDeleteSprint(sprintId);
                     }
                 }}
+                isReadOnly={isReadOnly}
             />
         );
     }
@@ -67,13 +69,15 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, ti
                     </h1>
                     <p className="text-gray-500 mt-1">Manage development cycles and assign tasks.</p>
                 </div>
-                <button
-                    onClick={() => setIsCreateModalOpen(true)}
-                    className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow-sm transition-all"
-                >
-                    <Plus className="h-4 w-4" />
-                    <span>Create New Sprint</span>
-                </button>
+                {!isReadOnly && (
+                    <button
+                        onClick={() => setIsCreateModalOpen(true)}
+                        className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow-sm transition-all"
+                    >
+                        <Plus className="h-4 w-4" />
+                        <span>Create New Sprint</span>
+                    </button>
+                )}
             </div>
 
             {/* A. Current Sprint */}
@@ -97,7 +101,7 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, ti
                                 </div>
                             </div>
                             <div className="flex items-center text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <span className="mr-2 text-sm font-medium">Manage Sprint</span>
+                                <span className="mr-2 text-sm font-medium">{isReadOnly ? 'View Sprint' : 'Manage Sprint'}</span>
                                 <ArrowRight className="w-5 h-5" />
                             </div>
                         </div>

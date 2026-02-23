@@ -18,6 +18,7 @@ export interface Ticket {
   // PM Fields
   pmStatus: 'Pending' | 'Approved' | 'Rejected' | 'On Hold';
   productAlignment?: string; // Yes/No + Justification
+  designReferenceLink?: string; // Figma Link
   techImpactBackend?: 'Low' | 'Medium' | 'High';
   techImpactMobile?: 'Low' | 'Medium' | 'High';
   situmDependency?: 'Yes' | 'No';

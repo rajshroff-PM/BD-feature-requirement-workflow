@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Sprint, Task, Ticket } from '../../types';
-import { ChevronLeft, Plus, Calendar, User, Pencil, Save, Trash2 } from 'lucide-react';
+import { ChevronLeft, Plus, Calendar, User, Pencil, Save, Trash2, Download } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { AddTaskModal } from './AddTaskModal';
 import { EditTaskModal } from './EditTaskModal';
 import { CreateSprintModal } from './CreateSprintModal';
@@ -16,9 +18,10 @@ interface SprintDetailsProps {
     onEditTask: (task: Task) => void;
     onDeleteTask: (taskId: string) => void;
     onDeleteSprint?: (sprintId: string) => void;
+    isReadOnly?: boolean;
 }
 
-export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, backlog, onBack, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint }) => {
+export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, backlog, onBack, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint, isReadOnly = false }) => {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isEditSprintModalOpen, setIsEditSprintModalOpen] = useState(false);
     const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -31,6 +34,81 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
         if (pct > 100) return 'bg-red-500';
         if (pct > 80) return 'bg-yellow-500';
         return 'bg-green-500';
+    };
+
+    const exportToCSV = () => {
+        const headers = [`Sprint: ${sprint.name}`];
+        const subHeaders = [
+            `Dates: ${sprint.startDate} to ${sprint.endDate}`,
+            `Capacity: ${sprint.capacity} days utilized: ${utilization}% (${totalEffort}/${sprint.capacity})`,
+        ];
+        if (sprint.goal) subHeaders.push(`Goal: "${sprint.goal.replace(/"/g, '""')}"`);
+
+        const tableHeaders = ["Task Title", "Assignee", "Schedule", "Effort", "Status"];
+
+        const rows = tasks.map(t => [
+            t.title,
+            t.assignee,
+            `${t.startDate} - ${t.endDate}`,
+            `${t.effort} Day(s)`,
+            t.status
+        ]);
+
+        let csvContent = "data:text/csv;charset=utf-8,"
+            + headers.map(h => `"${h}"`).join(",") + "\n"
+            + subHeaders.map(h => `"${h}"`).join(",") + "\n\n"
+            + tableHeaders.join(",") + "\n"
+            + rows.map(e => e.map(cell => `"${String(cell || '').replace(/"/g, '""')}"`).join(",")).join("\n");
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `${sprint.name.replace(/\s+/g, '_')}_Report.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const exportToPDF = () => {
+        const doc = new jsPDF();
+
+        // Title
+        doc.setFontSize(18);
+        doc.text(`Sprint Report: ${sprint.name}`, 14, 22);
+
+        // Sub headers
+        doc.setFontSize(11);
+        doc.setTextColor(100);
+
+        const goalText = doc.splitTextToSize(`Goal: ${sprint.goal || 'N/A'}`, 180);
+        doc.text(goalText, 14, 30);
+
+        const goalHeight = doc.getTextDimensions(goalText).h;
+        const detailsY = 30 + goalHeight + 4;
+
+        doc.text(`Dates: ${sprint.startDate} to ${sprint.endDate}`, 14, detailsY);
+        doc.text(`Capacity: ${sprint.capacity} days (Utilized: ${utilization}% - ${totalEffort} days)`, 14, detailsY + 6);
+
+        // Tasks Table
+        const tableColumn = ["Task Title", "Assignee", "Schedule", "Effort", "Status"];
+        const tableRows = tasks.map(t => [
+            t.title,
+            t.assignee,
+            `${t.startDate} to ${t.endDate}`,
+            `${t.effort} Day(s)`,
+            t.status
+        ]);
+
+        autoTable(doc, {
+            head: [tableColumn],
+            body: tableRows,
+            startY: detailsY + 12,
+            theme: 'grid',
+            styles: { fontSize: 9 },
+            headStyles: { fillColor: [79, 70, 229] } // Indigo-600
+        });
+
+        doc.save(`${sprint.name.replace(/\s+/g, '_')}_Report.pdf`);
     };
 
     return (
@@ -46,26 +124,28 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                             <div className="flex items-center space-x-3">
                                 <h2 className="text-2xl font-bold text-gray-900">{sprint.name}</h2>
                                 <Badge color={sprint.status === 'Active' ? 'green' : 'blue'}>{sprint.status}</Badge>
-                                <div className="flex space-x-1">
-                                    <button
-                                        onClick={() => setIsEditSprintModalOpen(true)}
-                                        className="p-1 text-gray-400 hover:text-indigo-600 transition-colors"
-                                        title="Edit Sprint"
-                                    >
-                                        <Pencil className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            if (window.confirm(`Are you sure you want to delete the sprint "${sprint.name}"? All associated tasks will be removed.`)) {
-                                                if (onDeleteSprint) onDeleteSprint(sprint.id);
-                                            }
-                                        }}
-                                        className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                                        title="Delete Sprint"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </div>
+                                {!isReadOnly && (
+                                    <div className="flex space-x-1">
+                                        <button
+                                            onClick={() => setIsEditSprintModalOpen(true)}
+                                            className="p-1 text-gray-400 hover:text-indigo-600 transition-colors"
+                                            title="Edit Sprint"
+                                        >
+                                            <Pencil className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                if (window.confirm(`Are you sure you want to delete the sprint "${sprint.name}"? All associated tasks will be removed.`)) {
+                                                    if (onDeleteSprint) onDeleteSprint(sprint.id);
+                                                }
+                                            }}
+                                            className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                            title="Delete Sprint"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                             <p className="text-sm text-gray-500 mt-1">{sprint.goal}</p>
                         </div>
@@ -91,13 +171,33 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                             </div>
                         </div>
 
-                        <button
-                            onClick={() => setIsAddModalOpen(true)}
-                            className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow-sm transition-all"
-                        >
-                            <Plus className="h-4 w-4" />
-                            <span>Add Tasks</span>
-                        </button>
+                        <div className="flex space-x-2">
+                            <button
+                                onClick={exportToCSV}
+                                className="flex items-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg shadow-sm transition-all text-sm"
+                                title="Download CSV format"
+                            >
+                                <Download className="h-4 w-4" />
+                                <span className="hidden sm:inline">CSV</span>
+                            </button>
+                            <button
+                                onClick={exportToPDF}
+                                className="flex items-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg shadow-sm transition-all text-sm"
+                                title="Download PDF format"
+                            >
+                                <Download className="h-4 w-4" />
+                                <span className="hidden sm:inline">PDF</span>
+                            </button>
+                            {!isReadOnly && (
+                                <button
+                                    onClick={() => setIsAddModalOpen(true)}
+                                    className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow-sm transition-all text-sm ml-2"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                    <span className="hidden sm:inline">Add Tasks</span>
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -121,7 +221,9 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Schedule</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Effort</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Status</th>
-                                <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase">Actions</th>
+                                {!isReadOnly && (
+                                    <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase">Actions</th>
+                                )}
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -149,15 +251,17 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                                             {task.status}
                                         </Badge>
                                     </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <button
-                                            onClick={() => setEditingTask(task)}
-                                            className="text-gray-400 hover:text-indigo-600 transition-colors"
-                                            title="Edit Task"
-                                        >
-                                            <Pencil className="w-4 h-4" />
-                                        </button>
-                                    </td>
+                                    {!isReadOnly && (
+                                        <td className="px-6 py-4 text-right">
+                                            <button
+                                                onClick={() => setEditingTask(task)}
+                                                className="text-gray-400 hover:text-indigo-600 transition-colors"
+                                                title="Edit Task"
+                                            >
+                                                <Pencil className="w-4 h-4" />
+                                            </button>
+                                        </td>
+                                    )}
                                 </tr>
                             ))}
                         </tbody>
