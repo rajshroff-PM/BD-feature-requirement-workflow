@@ -40,6 +40,16 @@ export interface User {
   role: Role;
 }
 
+export interface DevTeamMember {
+  id: string;
+  name: string;
+  role: string;
+}
+
+export interface SprintTeamMember extends DevTeamMember {
+  daysWorking: number;
+}
+
 export interface Sprint {
   id: string;
   name: string;
@@ -48,6 +58,7 @@ export interface Sprint {
   endDate: string;
   capacity: number; // Total man-days
   status: 'Active' | 'Planned' | 'Completed';
+  team?: SprintTeamMember[]; // assigned team members and their capacity
 }
 
 export interface Task {

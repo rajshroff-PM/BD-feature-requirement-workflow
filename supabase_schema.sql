@@ -11,6 +11,14 @@ create table profiles (
   updated_at timestamp with time zone
 );
 
+-- 1.5. DEV TEAM TABLE
+create table dev_team (
+  id uuid default uuid_generate_v4() primary key,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  name text not null,
+  role text
+);
+
 -- 2. TICKETS TABLE 
 create table tickets (
   id text primary key, -- e.g. "REQ-001"
@@ -57,10 +65,12 @@ alter table tickets enable row level security;
 -- 4. POLICIES (Simple for now, can be refined later)
 -- Allow read access to everyone for now (authenticated)
 create policy "Public profiles are viewable by everyone" on profiles for select using ( true );
+create policy "Public dev_team viewable by everyone" on dev_team for select using ( true );
 create policy "Tickets are viewable by everyone" on tickets for select using ( true );
 
 -- Insert access
 create policy "Users can insert their own profile" on profiles for insert with check ( auth.uid() = id );
+create policy "Authenticated users can insert dev_team" on dev_team for all using ( auth.role() = 'authenticated' );
 create policy "Authenticated users can insert tickets" on tickets for insert with check ( auth.role() = 'authenticated' );
 
 -- Update access (simplified for prototype)

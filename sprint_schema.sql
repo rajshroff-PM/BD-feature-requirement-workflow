@@ -12,7 +12,8 @@ create table sprints (
   start_date date,
   end_date date,
   capacity numeric,
-  status text check (status in ('Active', 'Planned', 'Completed'))
+  status text check (status in ('Active', 'Planned', 'Completed')),
+  team_members jsonb -- assigned team members and their capacity array
 );
 
 -- 2. TASKS TABLE

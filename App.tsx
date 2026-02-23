@@ -14,9 +14,11 @@ import {
   Loader2
 } from 'lucide-react';
 import { Badge } from './components/Badge';
+import { formatDate } from './lib/utils';
 import { LoginScreen } from './components/LoginScreen';
-import { Ticket, BadgeColor, User as UserType, Sprint, Task } from './types';
+import { Ticket, BadgeColor, User as UserType, Sprint, Task, DevTeamMember } from './types';
 import { SprintPlanner } from './components/sprint-planner/SprintPlanner';
+import { ManageDevTeam } from './components/ManageDevTeam';
 import { supabase } from './supabaseClient';
 
 // Initial state for a new ticket
@@ -58,10 +60,13 @@ export default function FeatureTriageApp() {
 
   const [isSaving, setIsSaving] = useState(false);
 
-  // New State for Sprint Planner
+  // New State for Sprint Planner & Dev Team
   const [currentView, setCurrentView] = useState<'triage' | 'sprint-planner'>('triage');
   const [sprints, setSprints] = useState<Sprint[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [devTeam, setDevTeam] = useState<DevTeamMember[]>([]);
+  const [isManageDevTeamOpen, setIsManageDevTeamOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
   // 1. Auth & Profile Handling
 
@@ -101,6 +106,7 @@ export default function FeatureTriageApp() {
         fetchTickets();
         fetchSprints();
         fetchTasks();
+        fetchDevTeam();
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -134,7 +140,8 @@ export default function FeatureTriageApp() {
           startDate: s.start_date,
           endDate: s.end_date,
           capacity: s.capacity,
-          status: newStatus
+          status: newStatus,
+          team: s.team_members || []
         };
       });
 
@@ -166,6 +173,16 @@ export default function FeatureTriageApp() {
     }
   };
 
+  const fetchDevTeam = async () => {
+    try {
+      const { data, error } = await supabase.from('dev_team').select('*').order('name', { ascending: true });
+      if (error) throw error;
+      setDevTeam(data || []);
+    } catch (err) {
+      console.error('Error fetching dev team:', err);
+    }
+  };
+
   const handleCreateSprint = async (newSprint: Sprint) => {
     try {
       setSprints(prev => [...prev, newSprint]); // optimistic
@@ -176,7 +193,8 @@ export default function FeatureTriageApp() {
         start_date: newSprint.startDate,
         end_date: newSprint.endDate,
         capacity: newSprint.capacity,
-        status: newSprint.status
+        status: newSprint.status,
+        team_members: newSprint.team || []
       }]);
       if (error) throw error;
     } catch (err: any) {
@@ -195,7 +213,8 @@ export default function FeatureTriageApp() {
         start_date: updatedSprint.startDate,
         end_date: updatedSprint.endDate,
         capacity: updatedSprint.capacity,
-        status: updatedSprint.status
+        status: updatedSprint.status,
+        team_members: updatedSprint.team || []
       }).eq('id', updatedSprint.id);
       if (error) throw error;
     } catch (err) {
@@ -492,7 +511,7 @@ export default function FeatureTriageApp() {
     placeholder?: string
   ) => {
     const isEditable = canEdit(activeTab);
-    const commonClasses = `w-full mt-1 p-2 border rounded-md ${!isEditable ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`;
+    const commonClasses = `w-full mt-1 p-2 border rounded-xl ${!isEditable ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`;
 
     return (
       <div>
@@ -537,7 +556,7 @@ export default function FeatureTriageApp() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center">
-          <Loader2 className="h-10 w-10 text-indigo-600 animate-spin" />
+          <Loader2 className="h-10 w-10 text-violet-600 animate-spin" />
           <p className="mt-4 text-gray-500">Loading Paathner...</p>
         </div>
       </div>
@@ -554,7 +573,7 @@ export default function FeatureTriageApp() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="bg-indigo-600 p-2 rounded-lg">
+            <div className="bg-violet-600 p-2 rounded-2xl">
               <FileSpreadsheet className="h-5 w-5 text-white" />
             </div>
             <h1 className="text-xl font-bold text-gray-900 tracking-tight">Paathner Triage Matrix</h1>
@@ -563,8 +582,8 @@ export default function FeatureTriageApp() {
             <div className="flex space-x-2">
               <button
                 onClick={() => setCurrentView('triage')}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${currentView === 'triage'
-                  ? 'bg-indigo-100 text-indigo-700'
+                className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${currentView === 'triage'
+                  ? 'bg-violet-100 text-violet-700'
                   : 'text-gray-500 hover:text-gray-700'
                   }`}
               >
@@ -573,18 +592,14 @@ export default function FeatureTriageApp() {
               {(user.role === 'PM' || user.role === 'DEV') && (
                 <button
                   onClick={() => setCurrentView('sprint-planner')}
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${currentView === 'sprint-planner'
-                    ? 'bg-indigo-100 text-indigo-700'
+                  className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${currentView === 'sprint-planner'
+                    ? 'bg-violet-100 text-violet-700'
                     : 'text-gray-500 hover:text-gray-700'
                     }`}
                 >
                   Sprint Planner
                 </button>
               )}
-            </div>
-            <div className="flex items-center text-sm text-gray-700 pr-4">
-              <span className="mr-2">Welcome, <strong>{user.name}</strong></span>
-              <Badge color="blue">{user.role}</Badge>
             </div>
           </div>
 
@@ -595,7 +610,7 @@ export default function FeatureTriageApp() {
               <input
                 type="text"
                 placeholder="Search tasks..."
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-64"
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-2xl text-sm focus:ring-2 focus:ring-violet-500 outline-none w-64"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -604,7 +619,7 @@ export default function FeatureTriageApp() {
             {user.role === 'BD' && (
               <button
                 onClick={openNewTicket}
-                className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow-sm transition-all"
+                className="flex items-center space-x-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-2xl shadow-md transition-all"
               >
                 <Plus className="h-4 w-4" />
                 <span>New Request</span>
@@ -613,24 +628,59 @@ export default function FeatureTriageApp() {
 
             <div className="w-px h-6 bg-gray-300 mx-2 hidden md:block"></div>
 
-            <button
-              onClick={handleLogout}
-              className="flex items-center space-x-2 text-gray-500 hover:text-red-600 transition-colors px-2 py-2 rounded-lg hover:bg-red-50"
-              title="Logout"
-            >
-              <LogOut className="w-5 h-5" />
-              <span className="hidden sm:inline text-sm font-medium">Logout</span>
-            </button>
+            {/* User Profile Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                className="flex items-center justify-center w-10 h-10 rounded-full bg-violet-100 text-violet-700 font-bold hover:bg-violet-200 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500"
+              >
+                {user.name ? user.name.charAt(0).toUpperCase() : <UserIcon className="w-5 h-5" />}
+              </button>
+
+              {isProfileMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsProfileMenuOpen(false)}></div>
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg py-1 z-20 border border-gray-200">
+                    <div className="px-4 py-3 border-b border-gray-100 mb-1">
+                      <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
+                      <p className="text-xs text-gray-500 truncate mt-1">Role: {user.role}</p>
+                    </div>
+                    {user.role === 'DEV' && (
+                      <button
+                        onClick={() => {
+                          setIsProfileMenuOpen(false);
+                          setIsManageDevTeamOpen(true);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center transition-colors"
+                      >
+                        <UserIcon className="w-4 h-4 mr-2" />
+                        Manage Dev Team
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setIsProfileMenuOpen(false);
+                        handleLogout();
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center transition-colors"
+                    >
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Logout
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
       {currentView === 'sprint-planner' ? (
         <SprintPlanner
           sprints={sprints}
           tasks={tasks}
           tickets={tickets}
+          devTeam={devTeam}
           onCreateSprint={handleCreateSprint}
           onAddTask={handleAddTask}
           onEditSprint={handleEditSprint}
@@ -641,7 +691,7 @@ export default function FeatureTriageApp() {
         />
       ) : (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -664,14 +714,14 @@ export default function FeatureTriageApp() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
-                      {ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : '-'}
+                      {formatDate(ticket.createdAt)}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">{ticket.source}</td>
                     <td className="px-6 py-4"><Badge color={getStatusColor(ticket.baStatus)}>{ticket.baStatus}</Badge></td>
                     <td className="px-6 py-4"><Badge color={getStatusColor(ticket.pmStatus)}>{ticket.pmStatus}</Badge></td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-2 items-start">
-                        <span className="text-sm font-mono text-gray-700">{ticket.deliveryDate || '-'}</span>
+                        <span className="text-sm font-mono text-gray-700">{formatDate(ticket.deliveryDate)}</span>
                         <Badge color={getStatusColor(ticket.devStatus)}>{ticket.devStatus}</Badge>
                       </div>
                     </td>
@@ -699,7 +749,7 @@ export default function FeatureTriageApp() {
           <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
               <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setIsModalOpen(false)}></div>
-              <div className="inline-block w-full max-w-4xl my-8 overflow-hidden text-left align-middle transition-all transform bg-white rounded-lg shadow-xl">
+              <div className="inline-block w-full max-w-4xl my-8 overflow-hidden text-left align-middle transition-all transform bg-white rounded-2xl shadow-xl">
 
                 {/* Modal Header */}
                 <div className="bg-white px-6 py-4 border-b flex justify-between items-center">
@@ -738,7 +788,7 @@ export default function FeatureTriageApp() {
                   {/* Tab 0: BD Team */}
                   {activeTab === 0 && (
                     <div className="space-y-6 animate-in fade-in duration-300">
-                      <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 mb-4 flex justify-between items-center">
+                      <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 mb-4 flex justify-between items-center">
                         <div>
                           <h4 className="flex items-center text-blue-800 font-bold">
                             <UserIcon className="w-4 h-4 mr-2" /> Stage 1: Business Requirement
@@ -813,7 +863,7 @@ export default function FeatureTriageApp() {
                   {/* Tab 1: BA Team */}
                   {activeTab === 1 && (
                     <div className="space-y-6 animate-in fade-in duration-300">
-                      <div className="bg-purple-50 p-4 rounded-lg border border-purple-100 mb-4 flex justify-between items-center">
+                      <div className="bg-purple-50 p-4 rounded-2xl border border-purple-100 mb-4 flex justify-between items-center">
                         <div>
                           <h4 className="flex items-center text-purple-800 font-bold">
                             <CheckCircle2 className="w-4 h-4 mr-2" /> Stage 2: Functional Analysis
@@ -839,7 +889,7 @@ export default function FeatureTriageApp() {
                   {/* Tab 2: PM Team */}
                   {activeTab === 2 && (
                     <div className="space-y-6 animate-in fade-in duration-300">
-                      <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 mb-4 flex justify-between items-center">
+                      <div className="bg-orange-50 p-4 rounded-2xl border border-orange-100 mb-4 flex justify-between items-center">
                         <div>
                           <h4 className="flex items-center text-orange-800 font-bold">
                             <AlertCircle className="w-4 h-4 mr-2" /> Stage 3: PM Approval & Technical Assessment
@@ -886,7 +936,7 @@ export default function FeatureTriageApp() {
                               value={formData.sprintCycle || ''}
                               onChange={handleInputChange}
                               disabled={!canEdit(2)}
-                              className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 transition-colors"
+                              className="w-full rounded-2xl border-gray-300 shadow-md focus:border-violet-500 focus:ring-violet-500 transition-colors"
                             >
                               <option value="">Select Sprint...</option>
                               {sprints
@@ -910,7 +960,7 @@ export default function FeatureTriageApp() {
                   {/* Tab 3: Dev Team */}
                   {activeTab === 3 && (
                     <div className="space-y-6 animate-in fade-in duration-300">
-                      <div className="bg-green-50 p-4 rounded-lg border border-green-100 mb-4 flex justify-between items-center">
+                      <div className="bg-green-50 p-4 rounded-2xl border border-green-100 mb-4 flex justify-between items-center">
                         <div>
                           <h4 className="flex items-center text-green-800 font-bold">
                             <Clock className="w-4 h-4 mr-2" /> Stage 4: Delivery Scheduling
@@ -921,7 +971,7 @@ export default function FeatureTriageApp() {
                       </div>
 
                       {/* Requirement Overview Section for Dev */}
-                      <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm">
+                      <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-md">
                         <h5 className="text-sm font-bold text-gray-800 mb-3 border-b pb-2">Requirement Overview</h5>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
@@ -953,12 +1003,12 @@ export default function FeatureTriageApp() {
                           <div>
                             <span className="block text-xs font-medium text-gray-500 uppercase">Requested Timeline</span>
                             <span className="text-sm text-gray-900 font-medium">
-                              {formData.requestedDate ? new Date(formData.requestedDate).toLocaleDateString() : <span className="text-gray-500 italic">Not set</span>}
+                              {formData.requestedDate ? formatDate(formData.requestedDate) : <span className="text-gray-500 italic">Not set</span>}
                             </span>
                           </div>
                           <div className="col-span-2">
                             <span className="block text-xs font-medium text-gray-500 uppercase">Functional Analysis Notes</span>
-                            <div className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 p-3 rounded-md mt-1 border border-gray-100 min-h-[60px]">
+                            <div className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 p-3 rounded-xl mt-1 border border-gray-100 min-h-[60px]">
                               {formData.analysis ? formData.analysis : <span className="text-gray-400 italic">No notes provided.</span>}
                             </div>
                           </div>
@@ -995,7 +1045,7 @@ export default function FeatureTriageApp() {
                     <button
                       onClick={saveTicket}
                       disabled={isSaving}
-                      className="inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                      className="inline-flex justify-center rounded-xl border border-transparent shadow-md px-4 py-2 bg-violet-600 text-base font-medium text-white hover:bg-violet-700 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                     >
                       {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                       {isSaving ? 'Saving...' : 'Save & Close'}
@@ -1006,7 +1056,7 @@ export default function FeatureTriageApp() {
                       You are viewing as {user.role}. Editing is restricted to your stage.
                     </span>
                   )}
-                  <button onClick={() => setIsModalOpen(false)} className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                  <button onClick={() => setIsModalOpen(false)} className="mt-3 w-full inline-flex justify-center rounded-xl border border-gray-300 shadow-md px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
                     Cancel
                   </button>
                 </div>
@@ -1016,6 +1066,16 @@ export default function FeatureTriageApp() {
           </div>
         )
       }
+
+      {/* Manage Dev Team Modal */}
+      {isManageDevTeamOpen && (
+        <ManageDevTeam
+          onClose={() => {
+            setIsManageDevTeamOpen(false);
+            fetchDevTeam(); // Refresh the dev team list in App state when closing
+          }}
+        />
+      )}
     </div >
   );
 };

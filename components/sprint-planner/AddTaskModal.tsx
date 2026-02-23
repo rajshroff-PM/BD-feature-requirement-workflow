@@ -15,7 +15,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
     const [manualTitle, setManualTitle] = useState('');
 
     // Task Form State
-    const [assignee, setAssignee] = useState('Dave (Dev)');
+    const [assignee, setAssignee] = useState(sprint.team && sprint.team.length > 0 ? sprint.team[0].name : '');
     const [startDate, setStartDate] = useState(sprint.startDate);
     const [endDate, setEndDate] = useState(sprint.startDate); // Default to start
     const [error, setError] = useState('');
@@ -45,6 +45,10 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
             setError('End date cannot be before start date.');
             return;
         }
+        if (!assignee) {
+            setError('Please select an assignee from the sprint team.');
+            return;
+        }
 
         const task: Task = {
             id: `TASK-${Date.now()}`,
@@ -65,7 +69,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
         <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen px-4">
                 <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose}></div>
-                <div className="relative w-full max-w-5xl my-8 overflow-hidden text-left bg-white rounded-lg shadow-xl h-[80vh] flex flex-col">
+                <div className="relative w-full max-w-5xl my-8 overflow-hidden text-left bg-white rounded-2xl shadow-xl h-[80vh] flex flex-col">
 
                     <div className="bg-white px-6 py-4 border-b flex justify-between items-center">
                         <div>
@@ -73,13 +77,13 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                             <div className="flex space-x-4 mt-2">
                                 <button
                                     onClick={() => setMode('select')}
-                                    className={`text-sm font-medium pb-1 border-b-2 transition-colors ${mode === 'select' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                                    className={`text-sm font-medium pb-1 border-b-2 transition-colors ${mode === 'select' ? 'border-violet-600 text-violet-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                                 >
                                     Select from Backlog
                                 </button>
                                 <button
                                     onClick={() => setMode('manual')}
-                                    className={`text-sm font-medium pb-1 border-b-2 transition-colors ${mode === 'manual' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                                    className={`text-sm font-medium pb-1 border-b-2 transition-colors ${mode === 'manual' ? 'border-violet-600 text-violet-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                                 >
                                     Create Manually
                                 </button>
@@ -102,9 +106,9 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                                                 <div
                                                     key={ticket.id}
                                                     onClick={() => { setSelectedTicket(ticket); setError(''); }}
-                                                    className={`p-3 rounded-lg border cursor-pointer transition-all ${selectedTicket?.id === ticket.id
-                                                        ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500'
-                                                        : 'bg-white border-gray-200 hover:border-indigo-300'
+                                                    className={`p-3 rounded-2xl border cursor-pointer transition-all ${selectedTicket?.id === ticket.id
+                                                        ? 'bg-violet-50 border-violet-500 ring-1 ring-violet-500'
+                                                        : 'bg-white border-gray-200 hover:border-violet-300'
                                                         }`}
                                                 >
                                                     <div className="flex justify-between items-start">
@@ -120,8 +124,8 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                                 </>
                             ) : (
                                 <div className="h-full flex flex-col items-center justify-center text-gray-500 p-8 text-center">
-                                    <div className="bg-indigo-50 p-4 rounded-full mb-4">
-                                        <Calendar className="w-8 h-8 text-indigo-400" />
+                                    <div className="bg-violet-50 p-4 rounded-full mb-4">
+                                        <Calendar className="w-8 h-8 text-violet-400" />
                                     </div>
                                     <h4 className="text-lg font-medium text-gray-900">Manual Task Creation</h4>
                                     <p className="text-sm mt-2 max-w-xs">Create ad-hoc tasks, bugs, or chores that aren't directly linked to a Business Requirement ticket.</p>
@@ -148,7 +152,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                                                 value={mode === 'select' ? selectedTicket!.title : manualTitle}
                                                 onChange={(e) => mode === 'manual' && setManualTitle(e.target.value)}
                                                 disabled={mode === 'select'}
-                                                className={`mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 ${mode === 'select' ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'focus:ring-indigo-500 focus:border-indigo-500'}`}
+                                                className={`mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 ${mode === 'select' ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'focus:ring-violet-500 focus:border-violet-500'}`}
                                                 placeholder={mode === 'manual' ? "e.g. Update Documentation" : ""}
                                             />
                                         </div>
@@ -158,12 +162,16 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                                             <select
                                                 value={assignee}
                                                 onChange={(e) => setAssignee(e.target.value)}
-                                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                className="mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 focus:ring-violet-500 focus:border-violet-500"
                                             >
-                                                <option>Dave (Dev)</option>
-                                                <option>Sarah (Frontend)</option>
-                                                <option>Mike (Backend)</option>
-                                                <option>Jessica (QA)</option>
+                                                <option value="" disabled>Select Assignee...</option>
+                                                {sprint.team && sprint.team.length > 0 ? (
+                                                    sprint.team.map(m => (
+                                                        <option key={m.id} value={m.name}>{m.name} ({m.role || 'Dev'})</option>
+                                                    ))
+                                                ) : (
+                                                    <option value="" disabled>No team selected for this sprint</option>
+                                                )}
                                             </select>
                                         </div>
 
@@ -176,7 +184,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                                                     min={sprint.startDate}
                                                     max={sprint.endDate}
                                                     onChange={(e) => setStartDate(e.target.value)}
-                                                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                    className="mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 focus:ring-violet-500 focus:border-violet-500"
                                                 />
                                             </div>
                                             <div>
@@ -187,12 +195,12 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                                                     min={sprint.startDate}
                                                     max={sprint.endDate}
                                                     onChange={(e) => setEndDate(e.target.value)}
-                                                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                    className="mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 focus:ring-violet-500 focus:border-violet-500"
                                                 />
                                             </div>
                                         </div>
 
-                                        <div className="bg-blue-50 p-3 rounded-md flex items-center">
+                                        <div className="bg-blue-50 p-3 rounded-xl flex items-center">
                                             <Calendar className="w-4 h-4 text-blue-500 mr-2" />
                                             <span className="text-sm text-blue-700 font-medium">
                                                 Estimated Effort: {calculateEffort(startDate, endDate)} Day(s)
@@ -200,7 +208,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                                         </div>
 
                                         {error && (
-                                            <div className="bg-red-50 p-3 rounded-md border border-red-200">
+                                            <div className="bg-red-50 p-3 rounded-xl border border-red-200">
                                                 <p className="text-sm text-red-600">{error}</p>
                                             </div>
                                         )}
@@ -209,7 +217,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                                     <div className="pt-4 border-t border-gray-200">
                                         <button
                                             onClick={handleAdd}
-                                            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                                            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-xl shadow-md text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500"
                                         >
                                             {mode === 'select' ? 'Assign to Sprint' : 'Create Task'}
                                         </button>

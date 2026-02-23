@@ -55,7 +55,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
             <div className="sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="mx-auto h-12 w-12 bg-indigo-600 rounded-xl flex items-center justify-center">
+                <div className="mx-auto h-12 w-12 bg-violet-600 rounded-xl flex items-center justify-center">
                     <UserIcon className="h-8 w-8 text-white" />
                 </div>
                 <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
@@ -67,10 +67,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
             </div>
 
             <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+                <div className="bg-white py-8 px-4 shadow sm:rounded-2xl sm:px-10">
                     <form className="space-y-6" onSubmit={handleAuth}>
                         {message && (
-                            <div className={`p-3 rounded-md text-sm flex items-center ${message.type === 'error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                            <div className={`p-3 rounded-xl text-sm flex items-center ${message.type === 'error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
                                 <AlertCircle className="w-4 h-4 mr-2" />
                                 {message.text}
                             </div>
@@ -86,7 +86,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                                             required
                                             value={fullName}
                                             onChange={(e) => setFullName(e.target.value)}
-                                            className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                            className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-xl shadow-md focus:ring-violet-500 focus:border-violet-500 sm:text-sm"
                                         />
                                     </div>
                                 </div>
@@ -96,7 +96,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                                         <select
                                             value={selectedRole}
                                             onChange={(e) => setSelectedRole(e.target.value)}
-                                            className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                                            className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-violet-500 focus:border-violet-500 sm:text-sm rounded-xl"
                                         >
                                             <option value="BD">BD (Business Development)</option>
                                             <option value="BA">BA (Business Analyst)</option>
@@ -116,7 +116,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                                     required
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-xl shadow-md focus:ring-violet-500 focus:border-violet-500 sm:text-sm"
                                 />
                             </div>
                         </div>
@@ -129,7 +129,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                                     required
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-xl shadow-md focus:ring-violet-500 focus:border-violet-500 sm:text-sm"
                                 />
                             </div>
                         </div>
@@ -138,7 +138,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-xl shadow-md text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500 disabled:opacity-50"
                             >
                                 {loading ? <Loader2 className="animate-spin h-5 w-5" /> : (
                                     <>
@@ -162,7 +162,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                         <div className="mt-6 text-center">
                             <button
                                 onClick={() => { setIsSignUp(!isSignUp); setMessage(null); }}
-                                className="text-indigo-600 hover:text-indigo-500 font-medium text-sm"
+                                className="text-violet-600 hover:text-violet-500 font-medium text-sm"
                             >
                                 {isSignUp ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
                             </button>

@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
 import { Sprint, Task, Ticket } from '../../types';
-import { ChevronLeft, Plus, Calendar, User, Pencil, Save, Trash2, Download } from 'lucide-react';
+import { ChevronLeft, Plus, Calendar, User, Pencil, Save, Trash2, Download, X, Filter } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { AddTaskModal } from './AddTaskModal';
 import { EditTaskModal } from './EditTaskModal';
 import { CreateSprintModal } from './CreateSprintModal';
 import { Badge } from '../Badge';
+import { formatDate } from '../../lib/utils';
+import { DevTeamMember } from '../../types';
 
 interface SprintDetailsProps {
     sprint: Sprint;
     tasks: Task[];
     backlog: Ticket[];
+    devTeam: DevTeamMember[];
     onBack: () => void;
     onAddTask: (task: Task) => void;
     onEditSprint: (sprint: Sprint) => void;
@@ -21,10 +24,11 @@ interface SprintDetailsProps {
     isReadOnly?: boolean;
 }
 
-export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, backlog, onBack, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint, isReadOnly = false }) => {
+export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, backlog, devTeam, onBack, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint, isReadOnly = false }) => {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isEditSprintModalOpen, setIsEditSprintModalOpen] = useState(false);
     const [editingTask, setEditingTask] = useState<Task | null>(null);
+    const [selectedMemberFilter, setSelectedMemberFilter] = useState<string | null>(null);
 
     // Calculate Utilization
     const totalEffort = tasks.reduce((sum, task) => sum + task.effort, 0);
@@ -36,10 +40,14 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
         return 'bg-green-500';
     };
 
+    const filteredTasks = selectedMemberFilter
+        ? tasks.filter(t => t.assignee === selectedMemberFilter)
+        : tasks;
+
     const exportToCSV = () => {
         const headers = [`Sprint: ${sprint.name}`];
         const subHeaders = [
-            `Dates: ${sprint.startDate} to ${sprint.endDate}`,
+            `Dates: ${formatDate(sprint.startDate)} to ${formatDate(sprint.endDate)}`,
             `Capacity: ${sprint.capacity} days utilized: ${utilization}% (${totalEffort}/${sprint.capacity})`,
         ];
         if (sprint.goal) subHeaders.push(`Goal: "${sprint.goal.replace(/"/g, '""')}"`);
@@ -49,7 +57,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
         const rows = tasks.map(t => [
             t.title,
             t.assignee,
-            `${t.startDate} - ${t.endDate}`,
+            `${formatDate(t.startDate)} - ${formatDate(t.endDate)}`,
             `${t.effort} Day(s)`,
             t.status
         ]);
@@ -86,7 +94,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
         const goalHeight = doc.getTextDimensions(goalText).h;
         const detailsY = 30 + goalHeight + 4;
 
-        doc.text(`Dates: ${sprint.startDate} to ${sprint.endDate}`, 14, detailsY);
+        doc.text(`Dates: ${formatDate(sprint.startDate)} to ${formatDate(sprint.endDate)}`, 14, detailsY);
         doc.text(`Capacity: ${sprint.capacity} days (Utilized: ${utilization}% - ${totalEffort} days)`, 14, detailsY + 6);
 
         // Tasks Table
@@ -94,7 +102,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
         const tableRows = tasks.map(t => [
             t.title,
             t.assignee,
-            `${t.startDate} to ${t.endDate}`,
+            `${formatDate(t.startDate)} to ${formatDate(t.endDate)}`,
             `${t.effort} Day(s)`,
             t.status
         ]);
@@ -114,7 +122,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-right duration-300">
             {/* Header */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="bg-white rounded-2xl shadow-md border border-gray-200 p-6">
                 <div className="flex flex-col md:flex-row justify-between md:items-center space-y-4 md:space-y-0">
                     <div className="flex items-center space-x-4">
                         <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
@@ -128,7 +136,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                                     <div className="flex space-x-1">
                                         <button
                                             onClick={() => setIsEditSprintModalOpen(true)}
-                                            className="p-1 text-gray-400 hover:text-indigo-600 transition-colors"
+                                            className="p-1 text-gray-400 hover:text-violet-600 transition-colors"
                                             title="Edit Sprint"
                                         >
                                             <Pencil className="w-4 h-4" />
@@ -155,7 +163,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                         <div className="text-right">
                             <p className="text-sm font-medium text-gray-900 flex items-center justify-end">
                                 <Calendar className="w-4 h-4 mr-2 text-gray-400" />
-                                {sprint.startDate} - {sprint.endDate}
+                                {formatDate(sprint.startDate)} - {formatDate(sprint.endDate)}
                             </p>
                             <div className="mt-2 w-48">
                                 <div className="flex justify-between text-xs text-gray-500 mb-1">
@@ -171,10 +179,44 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                             </div>
                         </div>
 
-                        <div className="flex space-x-2">
+                        {sprint.team && sprint.team.length > 0 && (
+                            <div className="flex flex-col items-end mt-2">
+                                <span className="text-xs text-gray-500 mb-1 font-medium">Sprint Team</span>
+                                <div className="flex items-center space-x-2">
+                                    <div className="flex -space-x-2 overflow-hidden p-1">
+                                        {sprint.team.map((member) => {
+                                            const isSelected = selectedMemberFilter === member.name;
+                                            return (
+                                                <div
+                                                    key={member.id}
+                                                    onClick={() => setSelectedMemberFilter(isSelected ? null : member.name)}
+                                                    className={`inline-block h-8 w-8 rounded-full ring-2 ring-white flex items-center justify-center font-bold text-xs cursor-pointer transition-all shadow-sm ${isSelected ? 'bg-violet-600 text-white z-10 scale-110 ring-violet-200' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'
+                                                        } ${selectedMemberFilter && !isSelected ? 'opacity-40 grayscale' : ''}`}
+                                                    title={`${member.name} (${member.daysWorking} days) - Click to filter tasks`}
+                                                >
+                                                    {member.name.charAt(0)}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    {selectedMemberFilter && (
+                                        <button
+                                            onClick={() => setSelectedMemberFilter(null)}
+                                            className="ml-1 p-1 rounded-full bg-red-50 hover:bg-red-100 text-red-500 transition-colors"
+                                            title="Clear Filter"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex space-x-2 mt-4 ml-auto">
+
                             <button
                                 onClick={exportToCSV}
-                                className="flex items-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg shadow-sm transition-all text-sm"
+                                className="flex items-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-2xl shadow-md transition-all text-sm"
                                 title="Download CSV format"
                             >
                                 <Download className="h-4 w-4" />
@@ -182,7 +224,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                             </button>
                             <button
                                 onClick={exportToPDF}
-                                className="flex items-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg shadow-sm transition-all text-sm"
+                                className="flex items-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-2xl shadow-md transition-all text-sm"
                                 title="Download PDF format"
                             >
                                 <Download className="h-4 w-4" />
@@ -191,7 +233,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                             {!isReadOnly && (
                                 <button
                                     onClick={() => setIsAddModalOpen(true)}
-                                    className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow-sm transition-all text-sm ml-2"
+                                    className="flex items-center space-x-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-2xl shadow-md transition-all text-sm ml-2"
                                 >
                                     <Plus className="h-4 w-4" />
                                     <span className="hidden sm:inline">Add Tasks</span>
@@ -203,14 +245,22 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
             </div>
 
             {/* Task List */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden min-h-[400px]">
-                {tasks.length === 0 ? (
+            <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden min-h-[400px]">
+                {filteredTasks.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-64 text-gray-500">
                         <div className="bg-gray-50 p-4 rounded-full mb-3">
-                            <Plus className="w-8 h-8 text-indigo-300" />
+                            {selectedMemberFilter ? <Filter className="w-8 h-8 text-violet-300" /> : <Plus className="w-8 h-8 text-violet-300" />}
                         </div>
-                        <p className="text-lg font-medium">No tasks assigned.</p>
-                        <p className="text-sm">Click "Add Tasks" to plan this sprint.</p>
+                        <p className="text-lg font-medium">{selectedMemberFilter ? 'No tasks found for this member.' : 'No tasks assigned.'}</p>
+                        <p className="text-sm text-center max-w-sm mt-1">{selectedMemberFilter ? `Clear the filter or assign new tasks to ${selectedMemberFilter}.` : 'Click "Add Tasks" to plan this sprint.'}</p>
+                        {selectedMemberFilter && (
+                            <button
+                                onClick={() => setSelectedMemberFilter(null)}
+                                className="mt-4 px-4 py-2 bg-white border border-gray-300 shadow-sm rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50"
+                            >
+                                Clear Filter
+                            </button>
+                        )}
                     </div>
                 ) : (
                     <table className="min-w-full divide-y divide-gray-200">
@@ -227,7 +277,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {tasks.map((task) => (
+                            {filteredTasks.map((task) => (
                                 <tr key={task.id} className="hover:bg-gray-50">
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col">
@@ -241,7 +291,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-600 font-mono">
-                                        {task.startDate} → {task.endDate}
+                                        {formatDate(task.startDate)} → {formatDate(task.endDate)}
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-600">
                                         {task.effort} Day(s)
@@ -255,7 +305,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                                         <td className="px-6 py-4 text-right">
                                             <button
                                                 onClick={() => setEditingTask(task)}
-                                                className="text-gray-400 hover:text-indigo-600 transition-colors"
+                                                className="text-gray-400 hover:text-violet-600 transition-colors"
                                                 title="Edit Task"
                                             >
                                                 <Pencil className="w-4 h-4" />
@@ -285,6 +335,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                 <CreateSprintModal
                     sprint={sprint}
                     nextSprintNumber={0} // Not needed for edit
+                    devTeam={devTeam}
                     onClose={() => setIsEditSprintModalOpen(false)}
                     onSave={(updatedSprint) => {
                         onEditSprint(updatedSprint);
@@ -296,6 +347,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
             {editingTask && (
                 <EditTaskModal
                     task={editingTask}
+                    sprint={sprint}
                     onClose={() => setEditingTask(null)}
                     onSave={(updatedTask) => {
                         onEditTask(updatedTask);
