@@ -11,10 +11,11 @@ import {
   Clock,
   User as UserIcon,
   LogOut,
-  Loader2
+  Loader2,
+  Filter
 } from 'lucide-react';
 import { Badge } from './components/Badge';
-import { formatDate } from './lib/utils';
+import { formatDate, getInitials } from './lib/utils';
 import { LoginScreen } from './components/LoginScreen';
 import { Ticket, BadgeColor, User as UserType, Sprint, Task, DevTeamMember } from './types';
 import { SprintPlanner } from './components/sprint-planner/SprintPlanner';
@@ -31,6 +32,9 @@ const initialTicketState: Ticket = {
   severity: 'Medium',
   value: '',
   requestedDate: '',
+
+  poStatus: 'Pending',
+  poOverview: '',
 
   baStatus: 'Pending',
   pmStatus: 'Pending',
@@ -59,6 +63,16 @@ export default function FeatureTriageApp() {
   const [activeTab, setActiveTab] = useState(0);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  // Filter State
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filters, setFilters] = useState({
+    poStatus: '',
+    baStatus: '',
+    pmStatus: '',
+    devStatus: ''
+  });
 
   // New State for Sprint Planner & Dev Team
   const [currentView, setCurrentView] = useState<'triage' | 'sprint-planner'>('triage');
@@ -312,6 +326,9 @@ export default function FeatureTriageApp() {
         value: t.value || '',
         requestedDate: t.requested_date,
 
+        poStatus: t.po_status,
+        poOverview: t.po_overview,
+
         baStatus: t.ba_status,
         srsLink: t.srs_link,
         analysis: t.analysis,
@@ -342,6 +359,49 @@ export default function FeatureTriageApp() {
     setUser(null);
   };
 
+  // ------------------------------------------------------------------
+  //  UNIVERSAL SEARCH LOGIC
+  // ------------------------------------------------------------------
+  const searchResults = React.useMemo(() => {
+    if (!searchTerm.trim()) return { tickets: [], sprints: [], tasks: [], team: [] };
+
+    const term = searchTerm.toLowerCase();
+
+    const matchedTickets = tickets.filter(t =>
+      t.title.toLowerCase().includes(term) ||
+      t.source.toLowerCase().includes(term) ||
+      t.id.toLowerCase().includes(term)
+    );
+
+    const matchedSprints = sprints.filter(s =>
+      s.name.toLowerCase().includes(term) ||
+      (s.goal && s.goal.toLowerCase().includes(term))
+    );
+
+    const matchedTasks = tasks.filter(t =>
+      t.title.toLowerCase().includes(term) ||
+      (t.assignee && t.assignee.toLowerCase().includes(term))
+    );
+
+    const matchedTeam = devTeam.filter(m =>
+      m.name.toLowerCase().includes(term) ||
+      (m.role && m.role.toLowerCase().includes(term))
+    );
+
+    return {
+      tickets: matchedTickets,
+      sprints: matchedSprints,
+      tasks: matchedTasks,
+      team: matchedTeam
+    };
+  }, [searchTerm, tickets, sprints, tasks, devTeam]);
+
+  const hasSearchResults = searchResults.tickets.length > 0 ||
+    searchResults.sprints.length > 0 ||
+    searchResults.tasks.length > 0 ||
+    searchResults.team.length > 0;
+  // ------------------------------------------------------------------
+
   const openNewTicket = () => {
     // Generate ID logic could be backend side, but for now:
     const newId = `REQ-${String(tickets.length + 1).padStart(3, '0')}`;
@@ -355,11 +415,13 @@ export default function FeatureTriageApp() {
     setFormData({ ...ticket });
     setCurrentTicket(ticket);
 
-    // Default tab based on status
-    if (ticket.devStatus !== 'Pending') setActiveTab(3);
-    else if (ticket.pmStatus !== 'Pending') setActiveTab(2);
-    else if (ticket.baStatus !== 'Pending') setActiveTab(1);
-    else setActiveTab(0);
+    // Default tab based on role
+    if (user?.role === 'BD') setActiveTab(0);
+    else if (user?.role === 'PO') setActiveTab(1);
+    else if (user?.role === 'BA') setActiveTab(2);
+    else if (user?.role === 'PM') setActiveTab(3);
+    else if (user?.role === 'DEV') setActiveTab(4);
+    else setActiveTab(0); // Fallback
 
     setIsModalOpen(true);
   };
@@ -384,6 +446,9 @@ export default function FeatureTriageApp() {
         severity: formData.severity,
         value: formData.value,
         requested_date: formData.requestedDate || null, // Handle empty strings for dates
+
+        po_status: formData.poStatus,
+        po_overview: formData.poOverview,
 
         ba_status: formData.baStatus,
         srs_link: formData.srsLink,
@@ -485,19 +550,28 @@ export default function FeatureTriageApp() {
     return 'gray';
   };
 
-  const filteredTickets = tickets.filter(t =>
-    t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.source.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // For the main table filter
+  const filteredTickets = tickets.filter(t => {
+    const matchesSearch = t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      t.source.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      t.id.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesPO = filters.poStatus ? t.poStatus === filters.poStatus : true;
+    const matchesBA = filters.baStatus ? t.baStatus === filters.baStatus : true;
+    const matchesPM = filters.pmStatus ? t.pmStatus === filters.pmStatus : true;
+    const matchesDev = filters.devStatus ? t.devStatus === filters.devStatus : true;
+
+    return matchesSearch && matchesPO && matchesBA && matchesPM && matchesDev;
+  });
 
   // Permission Logic
   const canEdit = (tabIndex: number): boolean => {
     if (!user) return false;
     if (user.role === 'BD' && tabIndex === 0) return true;
-    if (user.role === 'BA' && tabIndex === 1) return true;
-    if (user.role === 'PM' && tabIndex === 2) return true;
-    if (user.role === 'DEV' && tabIndex === 3) return true;
+    if (user.role === 'PO' && tabIndex === 1) return true;
+    if (user.role === 'BA' && tabIndex === 2) return true;
+    if (user.role === 'PM' && tabIndex === 3) return true;
+    if (user.role === 'DEV' && tabIndex === 4) return true;
     return false;
   };
 
@@ -578,43 +652,9 @@ export default function FeatureTriageApp() {
             </div>
             <h1 className="text-xl font-bold text-gray-900 tracking-tight">Paathner Triage Matrix</h1>
           </div>
-          <div className="flex items-center space-x-4">
-            <div className="flex space-x-2">
-              <button
-                onClick={() => setCurrentView('triage')}
-                className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${currentView === 'triage'
-                  ? 'bg-violet-100 text-violet-700'
-                  : 'text-gray-500 hover:text-gray-700'
-                  }`}
-              >
-                Triage Matrix
-              </button>
-              {(user.role === 'PM' || user.role === 'DEV') && (
-                <button
-                  onClick={() => setCurrentView('sprint-planner')}
-                  className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${currentView === 'sprint-planner'
-                    ? 'bg-violet-100 text-violet-700'
-                    : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                >
-                  Sprint Planner
-                </button>
-              )}
-            </div>
-          </div>
-
           <div className="flex items-center space-x-3">
 
-            <div className="relative hidden md:block">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search tasks..."
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-2xl text-sm focus:ring-2 focus:ring-violet-500 outline-none w-64"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
+
 
             {user.role === 'BD' && (
               <button
@@ -634,7 +674,7 @@ export default function FeatureTriageApp() {
                 onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
                 className="flex items-center justify-center w-10 h-10 rounded-full bg-violet-100 text-violet-700 font-bold hover:bg-violet-200 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500"
               >
-                {user.name ? user.name.charAt(0).toUpperCase() : <UserIcon className="w-5 h-5" />}
+                {user.name ? getInitials(user.name) : <UserIcon className="w-5 h-5" />}
               </button>
 
               {isProfileMenuOpen && (
@@ -675,6 +715,243 @@ export default function FeatureTriageApp() {
         </div>
       </header>
 
+      {/* Sub Navigation */}
+      <div className="bg-white border-b border-gray-200 sticky top-16 z-[9] shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+          <div className="flex items-center space-x-6 h-full">
+            <button
+              onClick={() => setCurrentView('triage')}
+              className={`h-full flex items-center border-b-2 px-1 text-sm font-bold transition-colors ${currentView === 'triage'
+                ? 'border-violet-600 text-violet-700'
+                : 'border-transparent text-gray-500 hover:text-gray-900 hover:border-gray-300'
+                }`}
+            >
+              Triage Matrix
+            </button>
+            {(user?.role === 'PM' || user?.role === 'DEV' || user?.role === 'PO') && (
+              <button
+                onClick={() => setCurrentView('sprint-planner')}
+                className={`h-full flex items-center border-b-2 px-1 text-sm font-bold transition-colors ${currentView === 'sprint-planner'
+                  ? 'border-violet-600 text-violet-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-900 hover:border-gray-300'
+                  }`}
+              >
+                Sprint Planner
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center space-x-3 my-2">
+            {currentView === 'triage' && (
+              <div className="relative">
+                <button
+                  className={`flex items-center justify-center w-9 h-9 rounded-2xl border ${isFilterOpen ? 'bg-violet-50 border-violet-300 text-violet-600' : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'} transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500`}
+                  title="Filter"
+                  onClick={() => setIsFilterOpen(!isFilterOpen)}
+                >
+                  <Filter className="h-4 w-4" />
+                </button>
+
+                {isFilterOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setIsFilterOpen(false)}></div>
+                    <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-2xl py-4 px-5 z-40 border border-gray-200">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-sm font-bold text-gray-900">Filters</h3>
+                        {(filters.poStatus || filters.baStatus || filters.pmStatus || filters.devStatus) && (
+                          <button
+                            onClick={() => setFilters({ poStatus: '', baStatus: '', pmStatus: '', devStatus: '' })}
+                            className="text-xs text-violet-600 hover:text-violet-700 font-medium"
+                          >
+                            Clear all
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 uppercase mb-1">PO Status</label>
+                          <select
+                            className="w-full p-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 outline-none"
+                            value={filters.poStatus}
+                            onChange={(e) => setFilters(prev => ({ ...prev, poStatus: e.target.value }))}
+                          >
+                            <option value="">All</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Approved">Approved</option>
+                            <option value="Rejected">Rejected</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 uppercase mb-1">BA Status</label>
+                          <select
+                            className="w-full p-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 outline-none"
+                            value={filters.baStatus}
+                            onChange={(e) => setFilters(prev => ({ ...prev, baStatus: e.target.value }))}
+                          >
+                            <option value="">All</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Analysis Complete">Analysis Complete</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 uppercase mb-1">PM Status</label>
+                          <select
+                            className="w-full p-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 outline-none"
+                            value={filters.pmStatus}
+                            onChange={(e) => setFilters(prev => ({ ...prev, pmStatus: e.target.value }))}
+                          >
+                            <option value="">All</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Approved">Approved</option>
+                            <option value="Rejected">Rejected</option>
+                            <option value="On Hold">On Hold</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 uppercase mb-1">Dev Status</label>
+                          <select
+                            className="w-full p-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 outline-none"
+                            value={filters.devStatus}
+                            onChange={(e) => setFilters(prev => ({ ...prev, devStatus: e.target.value }))}
+                          >
+                            <option value="">All</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Scheduled">Scheduled</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Done">Done</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="relative hidden md:block">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search anything..."
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-2xl text-sm focus:ring-2 focus:ring-violet-500 outline-none w-64 transition-all"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onFocus={() => setIsSearchFocused(true)}
+                  onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
+                />
+              </div>
+
+              {/* Universal Search Results Dropdown */}
+              {isSearchFocused && searchTerm.trim() !== '' && (
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl py-2 z-50 border border-gray-200 max-h-[80vh] overflow-y-auto">
+                  {!hasSearchResults ? (
+                    <div className="px-4 py-3 text-sm text-gray-500 text-center">No results found for "{searchTerm}"</div>
+                  ) : (
+                    <>
+                      {/* Tickets */}
+                      {searchResults.tickets.length > 0 && (
+                        <div className="mb-2">
+                          <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Tickets</div>
+                          {searchResults.tickets.slice(0, 5).map(ticket => (
+                            <button
+                              key={ticket.id}
+                              className="w-full text-left px-4 py-2 hover:bg-violet-50 focus:bg-violet-50 outline-none transition-colors border-l-2 border-transparent hover:border-violet-500"
+                              onClick={() => {
+                                setCurrentView('triage');
+                                openEditTicket(ticket);
+                                setSearchTerm('');
+                                setIsSearchFocused(false);
+                              }}
+                            >
+                              <div className="text-xs text-gray-400 font-mono">{ticket.id}</div>
+                              <div className="text-sm font-medium text-gray-900 truncate">{ticket.title}</div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Sprints */}
+                      {searchResults.sprints.length > 0 && (
+                        <div className="mb-2">
+                          <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Sprints</div>
+                          {searchResults.sprints.slice(0, 5).map(sprint => (
+                            <button
+                              key={sprint.id}
+                              className="w-full text-left px-4 py-2 hover:bg-violet-50 focus:bg-violet-50 outline-none transition-colors border-l-2 border-transparent hover:border-violet-500"
+                              onClick={() => {
+                                setCurrentView('sprint-planner');
+                                setTimeout(() => window.dispatchEvent(new CustomEvent('select-sprint', { detail: sprint.id })), 100);
+                                setSearchTerm('');
+                                setIsSearchFocused(false);
+                              }}
+                            >
+                              <div className="text-sm font-medium text-gray-900 truncate flex items-center justify-between">
+                                {sprint.name}
+                                <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full ${sprint.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                  {sprint.status}
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Tasks */}
+                      {searchResults.tasks.length > 0 && (
+                        <div className="mb-2">
+                          <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Tasks</div>
+                          {searchResults.tasks.slice(0, 5).map(task => (
+                            <button
+                              key={task.id}
+                              className="w-full text-left px-4 py-2 hover:bg-violet-50 focus:bg-violet-50 outline-none transition-colors border-l-2 border-transparent hover:border-violet-500"
+                              onClick={() => {
+                                setCurrentView('sprint-planner');
+                                setTimeout(() => window.dispatchEvent(new CustomEvent('select-sprint', { detail: task.sprintId })), 100);
+                                setSearchTerm('');
+                                setIsSearchFocused(false);
+                              }}
+                            >
+                              <div className="text-xs text-gray-400 truncate">{task.assignee || 'Unassigned'}</div>
+                              <div className="text-sm font-medium text-gray-900 truncate">{task.title}</div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Team */}
+                      {searchResults.team.length > 0 && (
+                        <div>
+                          <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Team Members</div>
+                          {searchResults.team.slice(0, 5).map(member => (
+                            <button
+                              key={member.id}
+                              className="w-full text-left px-4 py-2 hover:bg-violet-50 focus:bg-violet-50 outline-none transition-colors border-l-2 border-transparent hover:border-violet-500 flex justify-between items-center"
+                              onClick={() => {
+                                setIsManageDevTeamOpen(true);
+                                setSearchTerm('');
+                                setIsSearchFocused(false);
+                              }}
+                            >
+                              <div className="text-sm font-medium text-gray-900 truncate">{member.name}</div>
+                              <div className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{member.role}</div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {currentView === 'sprint-planner' ? (
         <SprintPlanner
           sprints={sprints}
@@ -687,7 +964,7 @@ export default function FeatureTriageApp() {
           onEditTask={handleEditTask}
           onDeleteTask={handleDeleteTask}
           onDeleteSprint={handleDeleteSprint}
-          isReadOnly={user?.role !== 'PM'}
+          isReadOnly={user?.role === 'PO' || user?.role === 'DEV'}
         />
       ) : (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -697,7 +974,7 @@ export default function FeatureTriageApp() {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">ID & Title</th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Source (BD)</th>
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">PO Status</th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">BA Status</th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">PM Status</th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Dev Delivery</th>
@@ -716,7 +993,7 @@ export default function FeatureTriageApp() {
                     <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
                       {formatDate(ticket.createdAt)}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{ticket.source}</td>
+                    <td className="px-6 py-4"><Badge color={getStatusColor(ticket.poStatus)}>{ticket.poStatus}</Badge></td>
                     <td className="px-6 py-4"><Badge color={getStatusColor(ticket.baStatus)}>{ticket.baStatus}</Badge></td>
                     <td className="px-6 py-4"><Badge color={getStatusColor(ticket.pmStatus)}>{ticket.pmStatus}</Badge></td>
                     <td className="px-6 py-4">
@@ -741,7 +1018,8 @@ export default function FeatureTriageApp() {
             </table>
           </div>
         </main>
-      )}
+      )
+      }
 
       {/* Modal */}
       {
@@ -763,9 +1041,15 @@ export default function FeatureTriageApp() {
                 {/* Tab Navigation */}
                 <div className="bg-gray-50 border-b px-6">
                   <nav className="-mb-px flex space-x-8">
-                    {['Requirement (BD)', 'Analysis (BA)', 'Approval (PM)', 'Delivery (Dev)'].map((tab, index) => {
+                    {['Requirement (BD)', 'Product Owner (PO)', 'Analysis (BA)', 'Approval (PM)', 'Delivery (Dev)'].map((tab, index) => {
                       const isActive = activeTab === index;
-                      const colors = ['border-blue-500 text-blue-600', 'border-purple-500 text-purple-600', 'border-orange-500 text-orange-600', 'border-green-500 text-green-600'];
+                      const colors = [
+                        'border-blue-500 text-blue-600',
+                        'border-teal-500 text-teal-600',
+                        'border-purple-500 text-purple-600',
+                        'border-orange-500 text-orange-600',
+                        'border-green-500 text-green-600'
+                      ];
                       return (
                         <button
                           key={tab}
@@ -860,17 +1144,80 @@ export default function FeatureTriageApp() {
                     </div>
                   )}
 
-                  {/* Tab 1: BA Team */}
+                  {/* Tab 1: Product Owner (PO) */}
                   {activeTab === 1 && (
+                    <div className="space-y-6 animate-in fade-in duration-300">
+                      <div className="bg-teal-50 p-4 rounded-2xl border border-teal-100 mb-4 flex justify-between items-center">
+                        <div>
+                          <h4 className="flex items-center text-teal-800 font-bold">
+                            <CheckCircle2 className="w-4 h-4 mr-2" /> Stage 2: Product Owner Approval
+                          </h4>
+                          <p className="text-sm text-teal-600 mt-1">Review the business requirement and provide an overview.</p>
+                        </div>
+                        {!canEdit(1) && <Badge color="gray">Read Only</Badge>}
+                      </div>
+
+                      {/* BD Info Summary (Read-Only) */}
+                      <div className="bg-white p-5 rounded-2xl border border-gray-200 mb-6 shadow-sm">
+                        <h5 className="text-sm font-bold text-gray-700 mb-4 border-b pb-2">Business Requirement Overview</h5>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase font-semibold">Feature Title</p>
+                            <p className="text-sm text-gray-900 mt-1">{formData.title || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase font-semibold">Origin Source</p>
+                            <p className="text-sm text-gray-900 mt-1">{formData.source || '-'}</p>
+                          </div>
+                          <div className="col-span-2">
+                            <p className="text-xs text-gray-500 uppercase font-semibold">Problem Statement</p>
+                            <p className="text-sm text-gray-900 mt-1">{formData.problem || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase font-semibold">Severity</p>
+                            <p className="text-[13px] font-medium mt-1">
+                              <span className={`px-2 py-0.5 rounded-md ${formData.severity === 'Critical' ? 'bg-red-100 text-red-700' :
+                                formData.severity === 'High' ? 'bg-orange-100 text-orange-700' :
+                                  formData.severity === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-green-100 text-green-700'
+                                }`}>
+                                {formData.severity || '-'}
+                              </span>
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase font-semibold">Requested Timeline</p>
+                            <p className="text-sm text-gray-900 mt-1">{formData.requestedDate ? formatDate(formData.requestedDate) : '-'}</p>
+                          </div>
+                          <div className="col-span-2">
+                            <p className="text-xs text-gray-500 uppercase font-semibold">Business Value</p>
+                            <p className="text-sm text-gray-900 mt-1">{formData.value || '-'}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="col-span-2">
+                          {renderInput('textarea', 'poOverview', 'PO Notes', undefined, 4, 'Add notes for further stakeholders...')}
+                        </div>
+                        <div>
+                          {renderInput('select', 'poStatus', 'Approval Decision', ['Pending', 'Approved', 'Rejected'], undefined, 'Select decision...')}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tab 2: BA Team */}
+                  {activeTab === 2 && (
                     <div className="space-y-6 animate-in fade-in duration-300">
                       <div className="bg-purple-50 p-4 rounded-2xl border border-purple-100 mb-4 flex justify-between items-center">
                         <div>
                           <h4 className="flex items-center text-purple-800 font-bold">
-                            <CheckCircle2 className="w-4 h-4 mr-2" /> Stage 2: Functional Analysis
+                            <CheckCircle2 className="w-4 h-4 mr-2" /> Stage 3: Functional Analysis
                           </h4>
                           <p className="text-sm text-purple-600 mt-1">Evaluate feasibility and requirements.</p>
                         </div>
-                        {!canEdit(1) && <Badge color="gray">Read Only</Badge>}
+                        {!canEdit(2) && <Badge color="gray">Read Only</Badge>}
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="col-span-2">
@@ -886,17 +1233,17 @@ export default function FeatureTriageApp() {
                     </div>
                   )}
 
-                  {/* Tab 2: PM Team */}
-                  {activeTab === 2 && (
+                  {/* Tab 3: PM Team */}
+                  {activeTab === 3 && (
                     <div className="space-y-6 animate-in fade-in duration-300">
                       <div className="bg-orange-50 p-4 rounded-2xl border border-orange-100 mb-4 flex justify-between items-center">
                         <div>
                           <h4 className="flex items-center text-orange-800 font-bold">
-                            <AlertCircle className="w-4 h-4 mr-2" /> Stage 3: PM Approval & Technical Assessment
+                            <AlertCircle className="w-4 h-4 mr-2" /> Stage 4: PM Approval & Technical Assessment
                           </h4>
                           <p className="text-sm text-orange-600 mt-1">Assess alignment, impact, and schedule.</p>
                         </div>
-                        {!canEdit(2) && <Badge color="gray">Read Only</Badge>}
+                        {!canEdit(3) && <Badge color="gray">Read Only</Badge>}
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -935,7 +1282,7 @@ export default function FeatureTriageApp() {
                               name="sprintCycle"
                               value={formData.sprintCycle || ''}
                               onChange={handleInputChange}
-                              disabled={!canEdit(2)}
+                              disabled={!canEdit(3)}
                               className="w-full rounded-2xl border-gray-300 shadow-md focus:border-violet-500 focus:ring-violet-500 transition-colors"
                             >
                               <option value="">Select Sprint...</option>
@@ -957,17 +1304,17 @@ export default function FeatureTriageApp() {
                     </div>
                   )}
 
-                  {/* Tab 3: Dev Team */}
-                  {activeTab === 3 && (
+                  {/* Tab 4: Dev Team */}
+                  {activeTab === 4 && (
                     <div className="space-y-6 animate-in fade-in duration-300">
                       <div className="bg-green-50 p-4 rounded-2xl border border-green-100 mb-4 flex justify-between items-center">
                         <div>
                           <h4 className="flex items-center text-green-800 font-bold">
-                            <Clock className="w-4 h-4 mr-2" /> Stage 4: Delivery Scheduling
+                            <Clock className="w-4 h-4 mr-2" /> Stage 5: Delivery Scheduling
                           </h4>
                           <p className="text-sm text-green-600 mt-1">Plan the delivery and technical execution.</p>
                         </div>
-                        {!canEdit(3) && <Badge color="gray">Read Only</Badge>}
+                        {!canEdit(4) && <Badge color="gray">Read Only</Badge>}
                       </div>
 
                       {/* Requirement Overview Section for Dev */}
@@ -1068,14 +1415,16 @@ export default function FeatureTriageApp() {
       }
 
       {/* Manage Dev Team Modal */}
-      {isManageDevTeamOpen && (
-        <ManageDevTeam
-          onClose={() => {
-            setIsManageDevTeamOpen(false);
-            fetchDevTeam(); // Refresh the dev team list in App state when closing
-          }}
-        />
-      )}
+      {
+        isManageDevTeamOpen && (
+          <ManageDevTeam
+            onClose={() => {
+              setIsManageDevTeamOpen(false);
+              fetchDevTeam(); // Refresh the dev team list in App state when closing
+            }}
+          />
+        )
+      }
     </div >
   );
 };

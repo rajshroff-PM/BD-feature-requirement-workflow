@@ -3,6 +3,7 @@ import { Plus, Users, Trash2, Pencil, X, Save, ShieldAlert, Loader2 } from 'luci
 import { DevTeamMember } from '../types';
 import { supabase } from '../supabaseClient';
 import { Badge } from './Badge';
+import { getInitials } from '../lib/utils';
 
 interface ManageDevTeamProps {
     onClose: () => void;
@@ -154,7 +155,7 @@ export const ManageDevTeam: React.FC<ManageDevTeamProps> = ({ onClose }) => {
                                         <div className="flex justify-between items-start">
                                             <div className="flex items-center space-x-3">
                                                 <div className="h-10 w-10 rounded-full bg-gradient-to-br from-violet-100 to-purple-100 flex items-center justify-center border border-violet-200 flex-shrink-0">
-                                                    <span className="text-violet-700 font-bold text-lg">{member.name.charAt(0).toUpperCase()}</span>
+                                                    <span className="text-violet-700 font-bold text-lg">{getInitials(member.name)}</span>
                                                 </div>
                                                 <div>
                                                     <h4 className="font-bold text-gray-900 line-clamp-1">{member.name}</h4>

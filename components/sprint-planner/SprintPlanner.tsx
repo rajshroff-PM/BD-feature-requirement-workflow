@@ -24,6 +24,15 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, ti
     const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
+    React.useEffect(() => {
+        const handleSelectSprint = (e: Event) => {
+            const customEvent = e as CustomEvent<string>;
+            setSelectedSprintId(customEvent.detail);
+        };
+        window.addEventListener('select-sprint', handleSelectSprint);
+        return () => window.removeEventListener('select-sprint', handleSelectSprint);
+    }, []);
+
     const activeSprint = sprints.find(s => s.status === 'Active');
     const upcomingSprints = sprints.filter(s => s.status === 'Planned');
     const pastSprints = sprints.filter(s => s.status === 'Completed');

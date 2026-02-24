@@ -7,7 +7,7 @@ import { AddTaskModal } from './AddTaskModal';
 import { EditTaskModal } from './EditTaskModal';
 import { CreateSprintModal } from './CreateSprintModal';
 import { Badge } from '../Badge';
-import { formatDate } from '../../lib/utils';
+import { formatDate, getInitials } from '../../lib/utils';
 import { DevTeamMember } from '../../types';
 
 interface SprintDetailsProps {
@@ -194,7 +194,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                                                         } ${selectedMemberFilter && !isSelected ? 'opacity-40 grayscale' : ''}`}
                                                     title={`${member.name} (${member.daysWorking} days) - Click to filter tasks`}
                                                 >
-                                                    {member.name.charAt(0)}
+                                                    {getInitials(member.name)}
                                                 </div>
                                             );
                                         })}
@@ -266,6 +266,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase w-16">S.No.</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Task Title</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Assignee</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Schedule</th>
@@ -277,8 +278,11 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {filteredTasks.map((task) => (
+                            {filteredTasks.map((task, index) => (
                                 <tr key={task.id} className="hover:bg-gray-50">
+                                    <td className="px-6 py-4 text-sm font-medium text-gray-500">
+                                        {index + 1}
+                                    </td>
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col">
                                             <span className="text-sm font-medium text-gray-900">{task.title}</span>

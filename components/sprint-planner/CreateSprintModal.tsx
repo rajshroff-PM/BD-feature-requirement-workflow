@@ -18,6 +18,7 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
     const [team, setTeam] = useState<SprintTeamMember[]>([]);
     const [status, setStatus] = useState<Sprint['status']>('Planned');
     const [dateError, setDateError] = useState('');
+    const [workingDaysInSprint, setWorkingDaysInSprint] = useState<number>(6);
 
     useEffect(() => {
         if (sprint) {
@@ -27,6 +28,13 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
             setEndDate(sprint.endDate);
             setTeam(sprint.team || []);
             setStatus(sprint.status);
+
+            if (sprint.startDate && sprint.endDate) {
+                const start = new Date(sprint.startDate);
+                const end = new Date(sprint.endDate);
+                const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                setWorkingDaysInSprint(diffDays > 0 ? diffDays : 6);
+            }
         }
     }, [sprint]);
 
@@ -41,7 +49,7 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
 
         const devMember = devTeam.find(m => m.id === memberId);
         if (devMember) {
-            setTeam([...team, { ...devMember, daysWorking: 5 }]); // default 5 days
+            setTeam([...team, { ...devMember, daysWorking: workingDaysInSprint }]); // dynamic default
         }
     };
 
@@ -64,16 +72,33 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
 
             if (day !== 1) { // 1 is Monday
                 setDateError('Sprints must start on a Monday.');
-                // We still allow them to select it but show error, 
-                // OR we could strictly enforce it. 
-                // For better UX during selection, we calculate the end date anyway based on 6 days duration
-                // But let's enforce the "Monday" rule for the "Ending on Saturday" logic to hold true.
+                // We still allow them to select it but show error
             }
 
-            // Calculate End Date (Start + 5 days = 6 days total, Mon->Sat)
+            // Determine if the Saturday of this week is a working Saturday
+            const saturday = new Date(date);
+            saturday.setDate(date.getDate() + (6 - day)); // Move to Saturday (6)
+
+            // Find occurrence of this Saturday in the month
+            const occurrence = Math.ceil(saturday.getDate() / 7);
+            const isWorkingSaturday = [1, 3, 5].includes(occurrence);
+
+            const daysInSprint = isWorkingSaturday ? 6 : 5;
+            setWorkingDaysInSprint(daysInSprint);
+
+            // Calculate End Date
             const endDateObj = new Date(date);
-            endDateObj.setDate(date.getDate() + 5);
+            endDateObj.setDate(date.getDate() + (daysInSprint - 1));
             setEndDate(endDateObj.toISOString().split('T')[0]);
+
+            // Update default capacities for already added team members
+            setTeam(prevTeam => prevTeam.map(member => {
+                if (member.daysWorking === workingDaysInSprint || member.daysWorking > daysInSprint) {
+                    return { ...member, daysWorking: daysInSprint };
+                }
+                return member;
+            }));
+
         } else {
             setEndDate('');
         }
@@ -145,7 +170,7 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
                                     {dateError && <p className="text-xs text-red-600 mt-1">{dateError}</p>}
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">End Date (Sat)</label>
+                                    <label className="block text-sm font-medium text-gray-700">End Date ({workingDaysInSprint === 6 ? 'Sat' : 'Fri'})</label>
                                     <input
                                         type="date"
                                         required
@@ -153,7 +178,7 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
                                         value={endDate}
                                         className="mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 bg-gray-100 text-gray-500 cursor-not-allowed"
                                     />
-                                    <p className="text-xs text-gray-400 mt-1">Auto-calculated (6 days)</p>
+                                    <p className="text-xs text-gray-400 mt-1">Auto-calculated ({workingDaysInSprint} days)</p>
                                 </div>
                             </div>
 

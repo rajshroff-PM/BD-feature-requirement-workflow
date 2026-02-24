@@ -15,6 +15,10 @@ export interface Ticket {
   analysis?: string;
   baStatus: 'Pending' | 'Analysis Complete';
 
+  // Product Owner Fields
+  poStatus: 'Pending' | 'Approved' | 'Rejected';
+  poOverview?: string;
+
   // PM Fields
   pmStatus: 'Pending' | 'Approved' | 'Rejected' | 'On Hold';
   productAlignment?: string; // Yes/No + Justification
@@ -34,7 +38,7 @@ export interface Ticket {
 
 export type BadgeColor = 'gray' | 'blue' | 'green' | 'yellow' | 'red' | 'purple';
 
-export type Role = 'BD' | 'BA' | 'PM' | 'DEV';
+export type Role = 'BD' | 'PO' | 'BA' | 'PM' | 'DEV';
 
 export interface User {
   role: Role;
