@@ -876,7 +876,7 @@ export default function FeatureTriageApp() {
                       <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
                       <p className="text-xs text-gray-500 truncate mt-1">Role: {user.role}</p>
                     </div>
-                    {user.role === 'PM' && (
+                    {(user.role === 'PM' || user.role === 'BA') && (
                       <button
                         onClick={() => {
                           setIsProfileMenuOpen(false);
