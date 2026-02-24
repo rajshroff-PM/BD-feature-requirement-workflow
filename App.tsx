@@ -19,6 +19,7 @@ import {
 import { Badge } from './components/Badge';
 import { formatDate, getInitials } from './lib/utils';
 import { LoginScreen } from './components/LoginScreen';
+import { RoleSelectionScreen } from './components/RoleSelectionScreen';
 import { Ticket, BadgeColor, User as UserType, Sprint, Task, DevTeamMember, Product, Feature } from './types';
 import { SprintPlanner } from './components/sprint-planner/SprintPlanner';
 import { ProductsPage } from './components/products/ProductsPage';
@@ -106,23 +107,32 @@ export default function FeatureTriageApp() {
   const [devTeam, setDevTeam] = useState<DevTeamMember[]>([]);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
-  // 1. Auth & Profile Handling
-
-  // 1. Auth & Profile Handling
+  // Auth & Profile Handling
+  const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
+  const [sessionUser, setSessionUser] = useState<any>(null);
+  const [roleSelectionLoading, setRoleSelectionLoading] = useState(false);
   useEffect(() => {
     // Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) fetchProfile(session.user.id);
-      else setLoading(false);
+      if (session) {
+        setSessionUser(session.user);
+        fetchProfile(session.user);
+      } else {
+        setLoading(false);
+      }
     });
 
     // Listen for changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) fetchProfile(session.user.id);
-      else {
+      if (session) {
+        setSessionUser(session.user);
+        fetchProfile(session.user);
+      } else {
+        setSessionUser(null);
         setUser(null);
+        setNeedsRoleSelection(false);
         setLoading(false);
       }
     });
@@ -130,28 +140,53 @@ export default function FeatureTriageApp() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (authUser: any) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', userId)
-        .single();
+        .eq('id', authUser.id)
+        .maybeSingle();
 
       if (error) throw error;
-      if (data) {
+      if (data && data.role) {
         setUser({ name: data.full_name, role: data.role });
+        setNeedsRoleSelection(false);
         fetchTickets();
         fetchSprints();
         fetchTasks();
         fetchProducts();
         fetchFeatures();
         fetchDevTeam();
+      } else {
+        setNeedsRoleSelection(true);
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveRole = async (selectedRole: string, fullName: string) => {
+    if (!sessionUser) return;
+    setRoleSelectionLoading(true);
+    try {
+      const { error } = await supabase.from('profiles').upsert({
+        id: sessionUser.id,
+        full_name: fullName || sessionUser.user_metadata?.full_name || 'New User',
+        role: selectedRole,
+        updated_at: new Date().toISOString()
+      });
+      if (error) throw error;
+
+      // Refetch profile to proceed
+      await fetchProfile(sessionUser);
+    } catch (err) {
+      console.error('Error saving role', err);
+      alert('Failed to save role. Please try again.');
+    } finally {
+      setRoleSelectionLoading(false);
     }
   };
 
@@ -817,11 +852,18 @@ export default function FeatureTriageApp() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center">
-          <Loader2 className="h-10 w-10 text-violet-600 animate-spin" />
-          <p className="mt-4 text-gray-500">Loading Paathner...</p>
-        </div>
+        <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
       </div>
+    );
+  }
+
+  if (needsRoleSelection && sessionUser) {
+    return (
+      <RoleSelectionScreen
+        user={sessionUser}
+        onSave={handleSaveRole}
+        isLoading={roleSelectionLoading}
+      />
     );
   }
 
