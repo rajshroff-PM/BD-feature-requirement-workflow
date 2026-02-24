@@ -21,6 +21,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
         try {
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
+                options: {
+                    redirectTo: `${window.location.origin}/`,
+                }
             });
             if (error) throw error;
             // App.tsx handles redirection/session tracking
