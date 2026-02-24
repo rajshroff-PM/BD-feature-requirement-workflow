@@ -70,9 +70,28 @@ export interface Task {
   sprintId: string;
   ticketId?: string; // Linked backend ticket
   title: string;
+  description?: string; // Optional description
   assignee: string; // e.g., 'Dave (Dev)'
   startDate: string;
   endDate: string;
   effort: number; // Days
   status: 'To Do' | 'In Progress' | 'Done';
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  pendingDeletionAt?: string;
+}
+
+export interface Feature {
+  id: string;
+  productId: string;
+  name: string;
+  description?: string;
+  srsLink?: string;
+  designReferenceLink?: string;
+  designReferenceImageUrls?: string[];
 }

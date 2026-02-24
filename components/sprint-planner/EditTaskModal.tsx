@@ -12,7 +12,8 @@ interface EditTaskModalProps {
 
 export const EditTaskModal: React.FC<EditTaskModalProps> = ({ task, sprint, onClose, onSave, onDelete }) => {
     const [title, setTitle] = useState(task.title);
-    const [assignee, setAssignee] = useState(task.assignee);
+    const [description, setDescription] = useState(task.description || '');
+    const [assignees, setAssignees] = useState<string[]>(task.assignee ? task.assignee.split(',').map(s => s.trim()).filter(Boolean) : []);
     const [status, setStatus] = useState<Task['status']>(task.status);
     const [effort, setEffort] = useState(task.effort);
     const [startDate, setStartDate] = useState(task.startDate);
@@ -23,7 +24,8 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ task, sprint, onCl
         onSave({
             ...task,
             title,
-            assignee,
+            description,
+            assignee: assignees.join(', '),
             status,
             effort,
             startDate,
@@ -55,20 +57,38 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ task, sprint, onCl
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Assignee</label>
-                                <select
-                                    value={assignee}
-                                    onChange={(e) => setAssignee(e.target.value)}
-                                    className="mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 focus:ring-violet-500 focus:border-violet-500"
-                                >
-                                    <option value="" disabled>Select Assignee...</option>
-                                    <option value="Unassigned">Unassigned</option>
+                                <label className="block text-sm font-medium text-gray-700">Description</label>
+                                <textarea
+                                    value={description}
+                                    onChange={(e) => setDescription(e.target.value)}
+                                    rows={3}
+                                    className="mt-1 block w-full border border-gray-300 rounded-xl shadow-sm p-2 focus:ring-violet-500 focus:border-violet-500"
+                                    placeholder="Describe the task..."
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Assignee(s)</label>
+                                <div className="mt-1 border border-gray-300 rounded-xl shadow-sm p-3 max-h-32 overflow-y-auto bg-white">
                                     {sprint.team && sprint.team.length > 0 ? (
                                         sprint.team.map(m => (
-                                            <option key={m.id} value={m.name}>{m.name} ({m.role || 'Dev'})</option>
+                                            <label key={m.id} className="flex items-center space-x-2 py-1 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={assignees.includes(m.name)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) setAssignees([...assignees, m.name]);
+                                                        else setAssignees(assignees.filter(a => a !== m.name));
+                                                    }}
+                                                    className="w-4 h-4 text-violet-600 focus:ring-violet-500 rounded border-gray-300"
+                                                />
+                                                <span className="text-sm text-gray-700">{m.name} ({m.role || 'Dev'})</span>
+                                            </label>
                                         ))
-                                    ) : null}
-                                </select>
+                                    ) : (
+                                        <span className="text-sm text-gray-500">No team selected for this sprint</span>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">

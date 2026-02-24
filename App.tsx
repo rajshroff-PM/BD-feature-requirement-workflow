@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Plus,
   FileSpreadsheet,
@@ -12,13 +13,15 @@ import {
   User as UserIcon,
   LogOut,
   Loader2,
-  Filter
+  Filter,
+  Package
 } from 'lucide-react';
 import { Badge } from './components/Badge';
 import { formatDate, getInitials } from './lib/utils';
 import { LoginScreen } from './components/LoginScreen';
-import { Ticket, BadgeColor, User as UserType, Sprint, Task, DevTeamMember } from './types';
+import { Ticket, BadgeColor, User as UserType, Sprint, Task, DevTeamMember, Product, Feature } from './types';
 import { SprintPlanner } from './components/sprint-planner/SprintPlanner';
+import { ProductsPage } from './components/products/ProductsPage';
 import { ManageDevTeam } from './components/ManageDevTeam';
 import { supabase } from './supabaseClient';
 
@@ -56,11 +59,28 @@ export default function FeatureTriageApp() {
   const [loading, setLoading] = useState(true);
   const [tickets, setTickets] = useState<Ticket[]>([]);
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const isModalOpen = searchParams.get('modal') === 'true';
+  const setIsModalOpen = (open: boolean) => {
+    setSearchParams(prev => {
+      if (open) prev.set('modal', 'true');
+      else prev.delete('modal');
+      return prev;
+    });
+  };
+
+  const [originalCurrentTicket, setCurrentTicket] = useState<Ticket | null>(null);
+  const currentTicket = originalCurrentTicket; // To be mapped properly if needed, but keeping original state for object works fine
+
+  const activeTab = parseInt(searchParams.get('tab') || '0', 10);
+  const setActiveTab = (tabIndex: number) => {
+    setSearchParams(prev => { prev.set('tab', tabIndex.toString()); return prev; });
+  };
+
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState<Ticket>(initialTicketState);
-  const [activeTab, setActiveTab] = useState(0);
+  const [selectedProductId, setSelectedProductId] = useState<string>('');
 
   const [isSaving, setIsSaving] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -75,11 +95,15 @@ export default function FeatureTriageApp() {
   });
 
   // New State for Sprint Planner & Dev Team
-  const [currentView, setCurrentView] = useState<'triage' | 'sprint-planner'>('triage');
+  const currentView = (searchParams.get('view') as 'triage' | 'sprint-planner' | 'products' | 'team') || 'triage';
+  const setCurrentView = (view: 'triage' | 'sprint-planner' | 'products' | 'team') => {
+    setSearchParams(prev => { prev.set('view', view); return prev; });
+  };
   const [sprints, setSprints] = useState<Sprint[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [features, setFeatures] = useState<Feature[]>([]);
   const [devTeam, setDevTeam] = useState<DevTeamMember[]>([]);
-  const [isManageDevTeamOpen, setIsManageDevTeamOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
   // 1. Auth & Profile Handling
@@ -120,6 +144,8 @@ export default function FeatureTriageApp() {
         fetchTickets();
         fetchSprints();
         fetchTasks();
+        fetchProducts();
+        fetchFeatures();
         fetchDevTeam();
       }
     } catch (error) {
@@ -127,6 +153,70 @@ export default function FeatureTriageApp() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchProducts = async () => {
+    try {
+      const { data, error } = await supabase.from('products').select('*').order('name');
+      if (error) throw error;
+
+      const now = new Date();
+      const validProducts: Product[] = [];
+      const productsToDelete: string[] = [];
+
+      (data || []).forEach(p => {
+        if (p.pending_deletion_at) {
+          const deletionTime = new Date(p.pending_deletion_at);
+          const hoursPassed = (now.getTime() - deletionTime.getTime()) / (1000 * 60 * 60);
+
+          if (hoursPassed >= 24) {
+            productsToDelete.push(p.id);
+          } else {
+            validProducts.push({
+              id: p.id,
+              name: p.name,
+              description: p.description,
+              icon: p.icon,
+              pendingDeletionAt: p.pending_deletion_at
+            });
+          }
+        } else {
+          validProducts.push({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            icon: p.icon
+          });
+        }
+      });
+
+      setProducts(validProducts);
+
+      // Programmatically hard-delete expired products
+      if (productsToDelete.length > 0) {
+        // Run in background without awaiting to block UI
+        supabase.from('products').delete().in('id', productsToDelete).then(({ error }) => {
+          if (error) console.error('Error hard-deleting expired products:', error);
+        });
+      }
+
+    } catch (err) { console.error('Error fetching products:', err); }
+  };
+
+  const fetchFeatures = async () => {
+    try {
+      const { data, error } = await supabase.from('features').select('*').order('name');
+      if (error) throw error;
+      setFeatures((data || []).map(f => ({
+        id: f.id,
+        productId: f.product_id,
+        name: f.name,
+        description: f.description,
+        srsLink: f.srs_link,
+        designReferenceLink: f.design_reference_link,
+        designReferenceImageUrls: f.design_reference_images || []
+      })));
+    } catch (err) { console.error('Error fetching features:', err); }
   };
 
   const fetchSprints = async () => {
@@ -175,6 +265,7 @@ export default function FeatureTriageApp() {
         sprintId: t.sprint_id,
         ticketId: t.ticket_id,
         title: t.title,
+        description: t.description,
         assignee: t.assignee,
         startDate: t.start_date,
         endDate: t.end_date,
@@ -258,6 +349,7 @@ export default function FeatureTriageApp() {
         sprint_id: newTask.sprintId,
         ticket_id: newTask.ticketId || null,
         title: newTask.title,
+        description: newTask.description,
         assignee: newTask.assignee,
         start_date: newTask.startDate,
         end_date: newTask.endDate,
@@ -277,6 +369,7 @@ export default function FeatureTriageApp() {
       setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t)); // optimistic
       const { error } = await supabase.from('tasks').update({
         title: updatedTask.title,
+        description: updatedTask.description,
         assignee: updatedTask.assignee,
         start_date: updatedTask.startDate,
         end_date: updatedTask.endDate,
@@ -299,6 +392,91 @@ export default function FeatureTriageApp() {
       console.error('Error deleting task:', err);
       fetchTasks();
     }
+  };
+
+  const handleCreateProduct = async (product: Product) => {
+    try {
+      setProducts(prev => [...prev, product]);
+      const { error } = await supabase.from('products').insert([{
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        icon: product.icon,
+        pending_deletion_at: product.pendingDeletionAt || null
+      }]);
+      if (error) throw error;
+    } catch (err) { console.error(err); fetchProducts(); }
+  };
+
+  const handleEditProduct = async (updatedProduct: Product) => {
+    try {
+      setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
+      const { error } = await supabase.from('products').update({
+        name: updatedProduct.name,
+        description: updatedProduct.description,
+        icon: updatedProduct.icon,
+        pending_deletion_at: updatedProduct.pendingDeletionAt || null
+      }).eq('id', updatedProduct.id);
+      if (error) throw error;
+    } catch (err) { console.error(err); fetchProducts(); }
+  };
+
+  const handleCreateFeature = async (feature: Feature) => {
+    try {
+      setFeatures(prev => [...prev, feature]);
+      const { error } = await supabase.from('features').insert([{
+        id: feature.id,
+        product_id: feature.productId,
+        name: feature.name,
+        description: feature.description,
+        srs_link: feature.srsLink,
+        design_reference_link: feature.designReferenceLink,
+        design_reference_images: feature.designReferenceImageUrls || []
+      }]);
+      if (error) throw error;
+    } catch (err) { console.error(err); fetchFeatures(); }
+  };
+
+  const handleEditFeature = async (updatedFeature: Feature) => {
+    try {
+      setFeatures(prev => prev.map(f => f.id === updatedFeature.id ? updatedFeature : f));
+      const { error } = await supabase.from('features').update({
+        name: updatedFeature.name,
+        description: updatedFeature.description,
+        srs_link: updatedFeature.srsLink,
+        design_reference_link: updatedFeature.designReferenceLink,
+        design_reference_images: updatedFeature.designReferenceImageUrls || []
+      }).eq('id', updatedFeature.id);
+      if (error) throw error;
+    } catch (err) { console.error(err); fetchFeatures(); }
+  };
+
+  const handleDeleteFeature = async (featureId: string) => {
+    try {
+      setFeatures(prev => prev.filter(f => f.id !== featureId));
+      const { error } = await supabase.from('features').delete().eq('id', featureId);
+      if (error) throw error;
+    } catch (err) { console.error(err); fetchFeatures(); }
+  };
+
+  const handleUploadImage = async (file: File): Promise<string> => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random()}.${fileExt}`;
+    const filePath = `${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('attachments')
+      .upload(filePath, file);
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data } = supabase.storage
+      .from('attachments')
+      .getPublicUrl(filePath);
+
+    return data.publicUrl;
   };
 
   // 2. Data Fetching
@@ -406,6 +584,7 @@ export default function FeatureTriageApp() {
     // Generate ID logic could be backend side, but for now:
     const newId = `REQ-${String(tickets.length + 1).padStart(3, '0')}`;
     setFormData({ ...initialTicketState, id: newId });
+    setSelectedProductId('');
     setCurrentTicket(null);
     setActiveTab(0);
     setIsModalOpen(true);
@@ -414,6 +593,14 @@ export default function FeatureTriageApp() {
   const openEditTicket = (ticket: Ticket) => {
     setFormData({ ...ticket });
     setCurrentTicket(ticket);
+
+    if (ticket.requestType === 'Enhancement') {
+      const feat = features.find(f => f.name === ticket.title);
+      if (feat) setSelectedProductId(feat.productId);
+      else setSelectedProductId('');
+    } else {
+      setSelectedProductId('');
+    }
 
     // Default tab based on role
     if (user?.role === 'BD') setActiveTab(0);
@@ -520,6 +707,7 @@ export default function FeatureTriageApp() {
               sprint_id: newTask.sprintId,
               ticket_id: newTask.ticketId,
               title: newTask.title,
+              description: newTask.description,
               assignee: newTask.assignee,
               start_date: newTask.startDate,
               end_date: newTask.endDate,
@@ -646,12 +834,15 @@ export default function FeatureTriageApp() {
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="bg-violet-600 p-2 rounded-2xl">
+          <button
+            onClick={() => setCurrentView('triage')}
+            className="flex items-center space-x-3 hover:opacity-80 transition-opacity focus:outline-none"
+          >
+            <div className="bg-violet-600 p-2 rounded-2xl flex-shrink-0">
               <FileSpreadsheet className="h-5 w-5 text-white" />
             </div>
-            <h1 className="text-xl font-bold text-gray-900 tracking-tight">Paathner Triage Matrix</h1>
-          </div>
+            <h1 className="text-xl font-bold text-gray-900 tracking-tight hidden sm:block">Paathner Triage Matrix</h1>
+          </button>
           <div className="flex items-center space-x-3">
 
 
@@ -685,11 +876,23 @@ export default function FeatureTriageApp() {
                       <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
                       <p className="text-xs text-gray-500 truncate mt-1">Role: {user.role}</p>
                     </div>
+                    {user.role === 'PM' && (
+                      <button
+                        onClick={() => {
+                          setIsProfileMenuOpen(false);
+                          setCurrentView('products');
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center transition-colors"
+                      >
+                        <Package className="w-4 h-4 mr-2" />
+                        Products Portfolio
+                      </button>
+                    )}
                     {user.role === 'DEV' && (
                       <button
                         onClick={() => {
                           setIsProfileMenuOpen(false);
-                          setIsManageDevTeamOpen(true);
+                          setCurrentView('team');
                         }}
                         className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center transition-colors"
                       >
@@ -715,242 +918,244 @@ export default function FeatureTriageApp() {
         </div>
       </header>
 
-      {/* Sub Navigation */}
-      <div className="bg-white border-b border-gray-200 sticky top-16 z-[9] shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-          <div className="flex items-center space-x-6 h-full">
-            <button
-              onClick={() => setCurrentView('triage')}
-              className={`h-full flex items-center border-b-2 px-1 text-sm font-bold transition-colors ${currentView === 'triage'
-                ? 'border-violet-600 text-violet-700'
-                : 'border-transparent text-gray-500 hover:text-gray-900 hover:border-gray-300'
-                }`}
-            >
-              Triage Matrix
-            </button>
-            {(user?.role === 'PM' || user?.role === 'DEV' || user?.role === 'PO') && (
+      {/* Sub Navigation (Only show in Triage and Sprint Planner) */}
+      {(currentView === 'triage' || currentView === 'sprint-planner') && (
+        <div className="bg-white border-b border-gray-200 sticky top-16 z-[9] shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+            <div className="flex items-center space-x-6 h-full">
               <button
-                onClick={() => setCurrentView('sprint-planner')}
-                className={`h-full flex items-center border-b-2 px-1 text-sm font-bold transition-colors ${currentView === 'sprint-planner'
+                onClick={() => setCurrentView('triage')}
+                className={`h-full flex items-center border-b-2 px-1 text-sm font-bold transition-colors ${currentView === 'triage'
                   ? 'border-violet-600 text-violet-700'
                   : 'border-transparent text-gray-500 hover:text-gray-900 hover:border-gray-300'
                   }`}
               >
-                Sprint Planner
+                Triage Matrix
               </button>
-            )}
-          </div>
-
-          <div className="flex items-center space-x-3 my-2">
-            {currentView === 'triage' && (
-              <div className="relative">
+              {(user?.role === 'PM' || user?.role === 'DEV' || user?.role === 'PO' || user?.role === 'BA') && (
                 <button
-                  className={`flex items-center justify-center w-9 h-9 rounded-2xl border ${isFilterOpen ? 'bg-violet-50 border-violet-300 text-violet-600' : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'} transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500`}
-                  title="Filter"
-                  onClick={() => setIsFilterOpen(!isFilterOpen)}
+                  onClick={() => setCurrentView('sprint-planner')}
+                  className={`h-full flex items-center border-b-2 px-1 text-sm font-bold transition-colors ${currentView === 'sprint-planner'
+                    ? 'border-violet-600 text-violet-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-900 hover:border-gray-300'
+                    }`}
                 >
-                  <Filter className="h-4 w-4" />
+                  Sprint Planner
                 </button>
+              )}
+            </div>
 
-                {isFilterOpen && (
-                  <>
-                    <div className="fixed inset-0 z-30" onClick={() => setIsFilterOpen(false)}></div>
-                    <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-2xl py-4 px-5 z-40 border border-gray-200">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-sm font-bold text-gray-900">Filters</h3>
-                        {(filters.poStatus || filters.baStatus || filters.pmStatus || filters.devStatus) && (
-                          <button
-                            onClick={() => setFilters({ poStatus: '', baStatus: '', pmStatus: '', devStatus: '' })}
-                            className="text-xs text-violet-600 hover:text-violet-700 font-medium"
-                          >
-                            Clear all
-                          </button>
-                        )}
-                      </div>
+            <div className="flex items-center space-x-3 my-2">
+              {currentView === 'triage' && (
+                <div className="relative">
+                  <button
+                    className={`flex items-center justify-center w-9 h-9 rounded-2xl border ${isFilterOpen ? 'bg-violet-50 border-violet-300 text-violet-600' : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'} transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500`}
+                    title="Filter"
+                    onClick={() => setIsFilterOpen(!isFilterOpen)}
+                  >
+                    <Filter className="h-4 w-4" />
+                  </button>
 
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 uppercase mb-1">PO Status</label>
-                          <select
-                            className="w-full p-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 outline-none"
-                            value={filters.poStatus}
-                            onChange={(e) => setFilters(prev => ({ ...prev, poStatus: e.target.value }))}
-                          >
-                            <option value="">All</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Approved">Approved</option>
-                            <option value="Rejected">Rejected</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 uppercase mb-1">BA Status</label>
-                          <select
-                            className="w-full p-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 outline-none"
-                            value={filters.baStatus}
-                            onChange={(e) => setFilters(prev => ({ ...prev, baStatus: e.target.value }))}
-                          >
-                            <option value="">All</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Analysis Complete">Analysis Complete</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 uppercase mb-1">PM Status</label>
-                          <select
-                            className="w-full p-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 outline-none"
-                            value={filters.pmStatus}
-                            onChange={(e) => setFilters(prev => ({ ...prev, pmStatus: e.target.value }))}
-                          >
-                            <option value="">All</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Approved">Approved</option>
-                            <option value="Rejected">Rejected</option>
-                            <option value="On Hold">On Hold</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 uppercase mb-1">Dev Status</label>
-                          <select
-                            className="w-full p-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 outline-none"
-                            value={filters.devStatus}
-                            onChange={(e) => setFilters(prev => ({ ...prev, devStatus: e.target.value }))}
-                          >
-                            <option value="">All</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Scheduled">Scheduled</option>
-                            <option value="In Progress">In Progress</option>
-                            <option value="Done">Done</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            <div className="relative hidden md:block">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search anything..."
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-2xl text-sm focus:ring-2 focus:ring-violet-500 outline-none w-64 transition-all"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  onFocus={() => setIsSearchFocused(true)}
-                  onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
-                />
-              </div>
-
-              {/* Universal Search Results Dropdown */}
-              {isSearchFocused && searchTerm.trim() !== '' && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl py-2 z-50 border border-gray-200 max-h-[80vh] overflow-y-auto">
-                  {!hasSearchResults ? (
-                    <div className="px-4 py-3 text-sm text-gray-500 text-center">No results found for "{searchTerm}"</div>
-                  ) : (
+                  {isFilterOpen && (
                     <>
-                      {/* Tickets */}
-                      {searchResults.tickets.length > 0 && (
-                        <div className="mb-2">
-                          <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Tickets</div>
-                          {searchResults.tickets.slice(0, 5).map(ticket => (
+                      <div className="fixed inset-0 z-30" onClick={() => setIsFilterOpen(false)}></div>
+                      <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-2xl py-4 px-5 z-40 border border-gray-200">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="text-sm font-bold text-gray-900">Filters</h3>
+                          {(filters.poStatus || filters.baStatus || filters.pmStatus || filters.devStatus) && (
                             <button
-                              key={ticket.id}
-                              className="w-full text-left px-4 py-2 hover:bg-violet-50 focus:bg-violet-50 outline-none transition-colors border-l-2 border-transparent hover:border-violet-500"
-                              onClick={() => {
-                                setCurrentView('triage');
-                                openEditTicket(ticket);
-                                setSearchTerm('');
-                                setIsSearchFocused(false);
-                              }}
+                              onClick={() => setFilters({ poStatus: '', baStatus: '', pmStatus: '', devStatus: '' })}
+                              className="text-xs text-violet-600 hover:text-violet-700 font-medium"
                             >
-                              <div className="text-xs text-gray-400 font-mono">{ticket.id}</div>
-                              <div className="text-sm font-medium text-gray-900 truncate">{ticket.title}</div>
+                              Clear all
                             </button>
-                          ))}
+                          )}
                         </div>
-                      )}
 
-                      {/* Sprints */}
-                      {searchResults.sprints.length > 0 && (
-                        <div className="mb-2">
-                          <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Sprints</div>
-                          {searchResults.sprints.slice(0, 5).map(sprint => (
-                            <button
-                              key={sprint.id}
-                              className="w-full text-left px-4 py-2 hover:bg-violet-50 focus:bg-violet-50 outline-none transition-colors border-l-2 border-transparent hover:border-violet-500"
-                              onClick={() => {
-                                setCurrentView('sprint-planner');
-                                setTimeout(() => window.dispatchEvent(new CustomEvent('select-sprint', { detail: sprint.id })), 100);
-                                setSearchTerm('');
-                                setIsSearchFocused(false);
-                              }}
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 uppercase mb-1">PO Status</label>
+                            <select
+                              className="w-full p-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 outline-none"
+                              value={filters.poStatus}
+                              onChange={(e) => setFilters(prev => ({ ...prev, poStatus: e.target.value }))}
                             >
-                              <div className="text-sm font-medium text-gray-900 truncate flex items-center justify-between">
-                                {sprint.name}
-                                <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full ${sprint.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                                  {sprint.status}
-                                </span>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                              <option value="">All</option>
+                              <option value="Pending">Pending</option>
+                              <option value="Approved">Approved</option>
+                              <option value="Rejected">Rejected</option>
+                            </select>
+                          </div>
 
-                      {/* Tasks */}
-                      {searchResults.tasks.length > 0 && (
-                        <div className="mb-2">
-                          <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Tasks</div>
-                          {searchResults.tasks.slice(0, 5).map(task => (
-                            <button
-                              key={task.id}
-                              className="w-full text-left px-4 py-2 hover:bg-violet-50 focus:bg-violet-50 outline-none transition-colors border-l-2 border-transparent hover:border-violet-500"
-                              onClick={() => {
-                                setCurrentView('sprint-planner');
-                                setTimeout(() => window.dispatchEvent(new CustomEvent('select-sprint', { detail: task.sprintId })), 100);
-                                setSearchTerm('');
-                                setIsSearchFocused(false);
-                              }}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 uppercase mb-1">BA Status</label>
+                            <select
+                              className="w-full p-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 outline-none"
+                              value={filters.baStatus}
+                              onChange={(e) => setFilters(prev => ({ ...prev, baStatus: e.target.value }))}
                             >
-                              <div className="text-xs text-gray-400 truncate">{task.assignee || 'Unassigned'}</div>
-                              <div className="text-sm font-medium text-gray-900 truncate">{task.title}</div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                              <option value="">All</option>
+                              <option value="Pending">Pending</option>
+                              <option value="Analysis Complete">Analysis Complete</option>
+                            </select>
+                          </div>
 
-                      {/* Team */}
-                      {searchResults.team.length > 0 && (
-                        <div>
-                          <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Team Members</div>
-                          {searchResults.team.slice(0, 5).map(member => (
-                            <button
-                              key={member.id}
-                              className="w-full text-left px-4 py-2 hover:bg-violet-50 focus:bg-violet-50 outline-none transition-colors border-l-2 border-transparent hover:border-violet-500 flex justify-between items-center"
-                              onClick={() => {
-                                setIsManageDevTeamOpen(true);
-                                setSearchTerm('');
-                                setIsSearchFocused(false);
-                              }}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 uppercase mb-1">PM Status</label>
+                            <select
+                              className="w-full p-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 outline-none"
+                              value={filters.pmStatus}
+                              onChange={(e) => setFilters(prev => ({ ...prev, pmStatus: e.target.value }))}
                             >
-                              <div className="text-sm font-medium text-gray-900 truncate">{member.name}</div>
-                              <div className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{member.role}</div>
-                            </button>
-                          ))}
+                              <option value="">All</option>
+                              <option value="Pending">Pending</option>
+                              <option value="Approved">Approved</option>
+                              <option value="Rejected">Rejected</option>
+                              <option value="On Hold">On Hold</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 uppercase mb-1">Dev Status</label>
+                            <select
+                              className="w-full p-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 outline-none"
+                              value={filters.devStatus}
+                              onChange={(e) => setFilters(prev => ({ ...prev, devStatus: e.target.value }))}
+                            >
+                              <option value="">All</option>
+                              <option value="Pending">Pending</option>
+                              <option value="Scheduled">Scheduled</option>
+                              <option value="In Progress">In Progress</option>
+                              <option value="Done">Done</option>
+                            </select>
+                          </div>
                         </div>
-                      )}
+                      </div>
                     </>
                   )}
                 </div>
               )}
+
+              <div className="relative hidden md:block">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search anything..."
+                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-2xl text-sm focus:ring-2 focus:ring-violet-500 outline-none w-64 transition-all"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onFocus={() => setIsSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
+                  />
+                </div>
+
+                {/* Universal Search Results Dropdown */}
+                {isSearchFocused && searchTerm.trim() !== '' && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl py-2 z-50 border border-gray-200 max-h-[80vh] overflow-y-auto">
+                    {!hasSearchResults ? (
+                      <div className="px-4 py-3 text-sm text-gray-500 text-center">No results found for "{searchTerm}"</div>
+                    ) : (
+                      <>
+                        {/* Tickets */}
+                        {searchResults.tickets.length > 0 && (
+                          <div className="mb-2">
+                            <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Tickets</div>
+                            {searchResults.tickets.slice(0, 5).map(ticket => (
+                              <button
+                                key={ticket.id}
+                                className="w-full text-left px-4 py-2 hover:bg-violet-50 focus:bg-violet-50 outline-none transition-colors border-l-2 border-transparent hover:border-violet-500"
+                                onClick={() => {
+                                  setCurrentView('triage');
+                                  openEditTicket(ticket);
+                                  setSearchTerm('');
+                                  setIsSearchFocused(false);
+                                }}
+                              >
+                                <div className="text-xs text-gray-400 font-mono">{ticket.id}</div>
+                                <div className="text-sm font-medium text-gray-900 truncate">{ticket.title}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Sprints */}
+                        {searchResults.sprints.length > 0 && (
+                          <div className="mb-2">
+                            <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Sprints</div>
+                            {searchResults.sprints.slice(0, 5).map(sprint => (
+                              <button
+                                key={sprint.id}
+                                className="w-full text-left px-4 py-2 hover:bg-violet-50 focus:bg-violet-50 outline-none transition-colors border-l-2 border-transparent hover:border-violet-500"
+                                onClick={() => {
+                                  setCurrentView('sprint-planner');
+                                  setTimeout(() => window.dispatchEvent(new CustomEvent('select-sprint', { detail: sprint.id })), 100);
+                                  setSearchTerm('');
+                                  setIsSearchFocused(false);
+                                }}
+                              >
+                                <div className="text-sm font-medium text-gray-900 truncate flex items-center justify-between">
+                                  {sprint.name}
+                                  <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full ${sprint.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                    {sprint.status}
+                                  </span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Tasks */}
+                        {searchResults.tasks.length > 0 && (
+                          <div className="mb-2">
+                            <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Tasks</div>
+                            {searchResults.tasks.slice(0, 5).map(task => (
+                              <button
+                                key={task.id}
+                                className="w-full text-left px-4 py-2 hover:bg-violet-50 focus:bg-violet-50 outline-none transition-colors border-l-2 border-transparent hover:border-violet-500"
+                                onClick={() => {
+                                  setCurrentView('sprint-planner');
+                                  setTimeout(() => window.dispatchEvent(new CustomEvent('select-sprint', { detail: task.sprintId })), 100);
+                                  setSearchTerm('');
+                                  setIsSearchFocused(false);
+                                }}
+                              >
+                                <div className="text-xs text-gray-400 truncate">{task.assignee || 'Unassigned'}</div>
+                                <div className="text-sm font-medium text-gray-900 truncate">{task.title}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Team */}
+                        {searchResults.team.length > 0 && (
+                          <div>
+                            <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Team Members</div>
+                            {searchResults.team.slice(0, 5).map(member => (
+                              <button
+                                key={member.id}
+                                className="w-full text-left px-4 py-2 hover:bg-violet-50 focus:bg-violet-50 outline-none transition-colors border-l-2 border-transparent hover:border-violet-500 flex justify-between items-center"
+                                onClick={() => {
+                                  setCurrentView('team');
+                                  setSearchTerm('');
+                                  setIsSearchFocused(false);
+                                }}
+                              >
+                                <div className="text-sm font-medium text-gray-900 truncate">{member.name}</div>
+                                <div className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{member.role}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {currentView === 'sprint-planner' ? (
         <SprintPlanner
@@ -964,7 +1169,22 @@ export default function FeatureTriageApp() {
           onEditTask={handleEditTask}
           onDeleteTask={handleDeleteTask}
           onDeleteSprint={handleDeleteSprint}
-          isReadOnly={user?.role === 'PO' || user?.role === 'DEV'}
+          isReadOnly={user?.role === 'PO' || user?.role === 'DEV' || user?.role === 'BA'}
+        />
+      ) : currentView === 'products' ? (
+        <ProductsPage
+          products={products}
+          features={features}
+          onCreateProduct={handleCreateProduct}
+          onEditProduct={handleEditProduct}
+          onCreateFeature={handleCreateFeature}
+          onEditFeature={handleEditFeature}
+          onDeleteFeature={handleDeleteFeature}
+          onUploadImage={handleUploadImage}
+        />
+      ) : currentView === 'team' ? (
+        <ManageDevTeam
+          onClose={() => fetchDevTeam()}
         />
       ) : (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -1115,14 +1335,38 @@ export default function FeatureTriageApp() {
                           {formData.requestType === 'New' ? (
                             renderInput('text', 'title', 'Feature Title', undefined, undefined, 'e.g. "One-Click Checkout"')
                           ) : (
-                            renderInput('select', 'title', 'Select Existing Feature', [
-                              'Reporting Module',
-                              'User Management',
-                              'Notifications',
-                              'Mobile App',
-                              'Payment Gateway',
-                              'Inventory System'
-                            ], undefined, 'Select feature to enhance...')
+                            <div className="space-y-4">
+                              <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">Select Product</label>
+                                <select
+                                  value={selectedProductId}
+                                  onChange={(e) => {
+                                    setSelectedProductId(e.target.value);
+                                    setFormData(prev => ({ ...prev, title: '' })); // clear feature selection
+                                  }}
+                                  disabled={!canEdit(0)}
+                                  className="w-full p-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 font-medium"
+                                >
+                                  <option value="" disabled>Select a Product...</option>
+                                  {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">Select Feature / Module</label>
+                                <select
+                                  name="title"
+                                  value={formData.title}
+                                  onChange={handleInputChange}
+                                  disabled={!canEdit(0) || !selectedProductId}
+                                  className="w-full p-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-violet-500 font-medium disabled:opacity-50"
+                                >
+                                  <option value="" disabled>{selectedProductId ? 'Select feature to enhance...' : 'Select a product first...'}</option>
+                                  {features.filter(f => f.productId === selectedProductId).map(f => (
+                                    <option key={f.id} value={f.name}>{f.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
                           )}
                         </div>
                         <div className="col-span-2 md:col-span-1">
@@ -1414,17 +1658,6 @@ export default function FeatureTriageApp() {
         )
       }
 
-      {/* Manage Dev Team Modal */}
-      {
-        isManageDevTeamOpen && (
-          <ManageDevTeam
-            onClose={() => {
-              setIsManageDevTeamOpen(false);
-              fetchDevTeam(); // Refresh the dev team list in App state when closing
-            }}
-          />
-        )
-      }
-    </div >
+    </div>
   );
 };

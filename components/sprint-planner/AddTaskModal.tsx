@@ -11,11 +11,12 @@ interface AddTaskModalProps {
 
 export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onClose, onAdd }) => {
     const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
-    const [mode, setMode] = useState<'select' | 'manual'>('select');
+    const [mode, setMode] = useState<'select' | 'manual'>('manual');
     const [manualTitle, setManualTitle] = useState('');
+    const [manualDescription, setManualDescription] = useState('');
 
     // Task Form State
-    const [assignee, setAssignee] = useState(sprint.team && sprint.team.length > 0 ? sprint.team[0].name : '');
+    const [assignees, setAssignees] = useState<string[]>(sprint.team && sprint.team.length > 0 ? [sprint.team[0].name] : []);
     const [startDate, setStartDate] = useState(sprint.startDate);
     const [endDate, setEndDate] = useState(sprint.startDate); // Default to start
     const [error, setError] = useState('');
@@ -45,8 +46,8 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
             setError('End date cannot be before start date.');
             return;
         }
-        if (!assignee) {
-            setError('Please select an assignee from the sprint team.');
+        if (assignees.length === 0) {
+            setError('Please select at least one assignee from the sprint team.');
             return;
         }
 
@@ -55,7 +56,8 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
             sprintId: sprint.id,
             ticketId: mode === 'select' ? selectedTicket!.id : undefined,
             title: mode === 'select' ? selectedTicket!.title : manualTitle,
-            assignee,
+            description: mode === 'manual' ? manualDescription : undefined,
+            assignee: assignees.join(', '),
             startDate,
             endDate,
             effort: calculateEffort(startDate, endDate),
@@ -76,16 +78,16 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                             <h3 className="text-lg font-bold text-gray-900">Add Tasks to {sprint.name}</h3>
                             <div className="flex space-x-4 mt-2">
                                 <button
-                                    onClick={() => setMode('select')}
-                                    className={`text-sm font-medium pb-1 border-b-2 transition-colors ${mode === 'select' ? 'border-violet-600 text-violet-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                                >
-                                    Select from Backlog
-                                </button>
-                                <button
                                     onClick={() => setMode('manual')}
                                     className={`text-sm font-medium pb-1 border-b-2 transition-colors ${mode === 'manual' ? 'border-violet-600 text-violet-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                                 >
                                     Create Manually
+                                </button>
+                                <button
+                                    onClick={() => setMode('select')}
+                                    className={`text-sm font-medium pb-1 border-b-2 transition-colors ${mode === 'select' ? 'border-violet-600 text-violet-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    Select from Triage matrix
                                 </button>
                             </div>
                         </div>
@@ -94,47 +96,37 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
 
                     <div className="flex flex-1 overflow-hidden">
                         {/* LEFT PANE: Backlog or Instructions */}
-                        <div className="w-1/2 border-r border-gray-200 overflow-y-auto bg-gray-50 p-4">
-                            {mode === 'select' ? (
-                                <>
-                                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Approved Backlog</h4>
-                                    <div className="space-y-3">
-                                        {backlog.length === 0 ? (
-                                            <p className="text-sm text-gray-500 italic">No approved items found.</p>
-                                        ) : (
-                                            backlog.map(ticket => (
-                                                <div
-                                                    key={ticket.id}
-                                                    onClick={() => { setSelectedTicket(ticket); setError(''); }}
-                                                    className={`p-3 rounded-2xl border cursor-pointer transition-all ${selectedTicket?.id === ticket.id
-                                                        ? 'bg-violet-50 border-violet-500 ring-1 ring-violet-500'
-                                                        : 'bg-white border-gray-200 hover:border-violet-300'
-                                                        }`}
-                                                >
-                                                    <div className="flex justify-between items-start">
-                                                        <span className="text-xs font-mono text-gray-500">{ticket.id}</span>
-                                                        <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">{ticket.pmStatus}</span>
-                                                    </div>
-                                                    <h5 className="text-sm font-medium text-gray-900 mt-1">{ticket.title}</h5>
-                                                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{ticket.value}</p>
+                        {mode === 'select' && (
+                            <div className="w-1/2 border-r border-gray-200 overflow-y-auto bg-gray-50 p-4">
+                                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Approved Backlog</h4>
+                                <div className="space-y-3">
+                                    {backlog.length === 0 ? (
+                                        <p className="text-sm text-gray-500 italic">No approved items found.</p>
+                                    ) : (
+                                        backlog.map(ticket => (
+                                            <div
+                                                key={ticket.id}
+                                                onClick={() => { setSelectedTicket(ticket); setError(''); }}
+                                                className={`p-3 rounded-2xl border cursor-pointer transition-all ${selectedTicket?.id === ticket.id
+                                                    ? 'bg-violet-50 border-violet-500 ring-1 ring-violet-500'
+                                                    : 'bg-white border-gray-200 hover:border-violet-300'
+                                                    }`}
+                                            >
+                                                <div className="flex justify-between items-start">
+                                                    <span className="text-xs font-mono text-gray-500">{ticket.id}</span>
+                                                    <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">{ticket.pmStatus}</span>
                                                 </div>
-                                            ))
-                                        )}
-                                    </div>
-                                </>
-                            ) : (
-                                <div className="h-full flex flex-col items-center justify-center text-gray-500 p-8 text-center">
-                                    <div className="bg-violet-50 p-4 rounded-full mb-4">
-                                        <Calendar className="w-8 h-8 text-violet-400" />
-                                    </div>
-                                    <h4 className="text-lg font-medium text-gray-900">Manual Task Creation</h4>
-                                    <p className="text-sm mt-2 max-w-xs">Create ad-hoc tasks, bugs, or chores that aren't directly linked to a Business Requirement ticket.</p>
+                                                <h5 className="text-sm font-medium text-gray-900 mt-1">{ticket.title}</h5>
+                                                <p className="text-xs text-gray-500 mt-1 line-clamp-2">{ticket.value}</p>
+                                            </div>
+                                        ))
+                                    )}
                                 </div>
-                            )}
-                        </div>
+                            </div>
+                        )}
 
                         {/* RIGHT PANE: Task form */}
-                        <div className="w-1/2 p-6 overflow-y-auto bg-white">
+                        <div className={`${mode === 'select' ? 'w-1/2' : 'w-full'} p-6 overflow-y-auto bg-white`}>
                             {(selectedTicket || mode === 'manual') ? (
                                 <div className="space-y-6">
                                     <div>
@@ -152,27 +144,46 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                                                 value={mode === 'select' ? selectedTicket!.title : manualTitle}
                                                 onChange={(e) => mode === 'manual' && setManualTitle(e.target.value)}
                                                 disabled={mode === 'select'}
-                                                className={`mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 ${mode === 'select' ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'focus:ring-violet-500 focus:border-violet-500'}`}
+                                                className={`mt-1 block w-full border border-gray-300 rounded-xl shadow-sm p-2 ${mode === 'select' ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'focus:ring-violet-500 focus:border-violet-500'}`}
                                                 placeholder={mode === 'manual' ? "e.g. Update Documentation" : ""}
                                             />
                                         </div>
 
+                                        {mode === 'manual' && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">Description</label>
+                                                <textarea
+                                                    value={manualDescription}
+                                                    onChange={(e) => setManualDescription(e.target.value)}
+                                                    rows={3}
+                                                    className="mt-1 block w-full border border-gray-300 rounded-xl shadow-sm p-2 focus:ring-violet-500 focus:border-violet-500"
+                                                    placeholder="Describe the task..."
+                                                />
+                                            </div>
+                                        )}
+
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700">Assignee</label>
-                                            <select
-                                                value={assignee}
-                                                onChange={(e) => setAssignee(e.target.value)}
-                                                className="mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 focus:ring-violet-500 focus:border-violet-500"
-                                            >
-                                                <option value="" disabled>Select Assignee...</option>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Assignee(s)</label>
+                                            <div className="mt-1 border border-gray-300 rounded-xl shadow-sm p-3 max-h-32 overflow-y-auto bg-white">
                                                 {sprint.team && sprint.team.length > 0 ? (
                                                     sprint.team.map(m => (
-                                                        <option key={m.id} value={m.name}>{m.name} ({m.role || 'Dev'})</option>
+                                                        <label key={m.id} className="flex items-center space-x-2 py-1 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={assignees.includes(m.name)}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) setAssignees([...assignees, m.name]);
+                                                                    else setAssignees(assignees.filter(a => a !== m.name));
+                                                                }}
+                                                                className="w-4 h-4 text-violet-600 focus:ring-violet-500 rounded border-gray-300"
+                                                            />
+                                                            <span className="text-sm text-gray-700">{m.name} ({m.role || 'Dev'})</span>
+                                                        </label>
                                                     ))
                                                 ) : (
-                                                    <option value="" disabled>No team selected for this sprint</option>
+                                                    <span className="text-sm text-gray-500">No team selected for this sprint</span>
                                                 )}
-                                            </select>
+                                            </div>
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-4">
