@@ -15,7 +15,8 @@ The Paathner Triage Matrix is a full-stack web application designed to streamlin
    - Assigning tasks (which can be auto-generated when a PM approves a ticket and assigns a sprint cycle) to specific Dev Team members.
    - Tracking sprint capacity and dynamically updating sprint statuses (Planned, Active, Completed) based on dates.
 4. **Universal Search:** An omni-search bar that allows users to instantly find tickets, sprints, tasks, and team members from anywhere in the app.
-5. **Data Management & Authentication:** All data (Tickets, Sprints, Tasks, User Profiles, Dev Team configurations) is securely stored and retrieved using a Supabase backend. Supabase also handles role-based authentication.
+5. **Data Management & Authentication:** All data (Tickets, Sprints, Tasks, User Profiles, Dev Team configurations) is securely stored and retrieved using a Supabase PostgreSQL backend. Authentication is handled via Supabase Auth, supporting both Email/Password and **Google OAuth** login.
+   - **New User Onboarding:** Upon first login via Google, a database trigger automatically creates a base profile. The application intercepts the user with a mandatory **Role Selection Screen**, forcing them to define their stakeholder role before granting access to the Triage Matrix. Row Level Security (RLS) policies govern data access, ensuring users can only update their own profiles and access appropriate ticket sections.
 6. **Reporting & Exports:** Users can export Sprint reports into PDF and CSV formats from the Sprint Planner.
 
 ## Stakeholders and Roles
