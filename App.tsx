@@ -150,7 +150,7 @@ export default function FeatureTriageApp() {
 
       if (error) throw error;
       if (data && data.role) {
-        setUser({ name: data.full_name, role: data.role });
+        setUser({ id: authUser.id, name: data.full_name, role: data.role });
         setNeedsRoleSelection(false);
         fetchTickets();
         fetchSprints();
@@ -305,7 +305,9 @@ export default function FeatureTriageApp() {
         startDate: t.start_date,
         endDate: t.end_date,
         effort: t.effort,
-        status: t.status
+        status: t.status,
+        estimatedTime: t.estimated_time,
+        loggedTime: t.logged_time
       }));
       setTasks(mappedTasks);
     } catch (err) {
@@ -389,7 +391,9 @@ export default function FeatureTriageApp() {
         start_date: newTask.startDate,
         end_date: newTask.endDate,
         effort: newTask.effort,
-        status: newTask.status
+        status: newTask.status,
+        estimated_time: newTask.estimatedTime,
+        logged_time: newTask.loggedTime
       }]);
       if (error) throw error;
     } catch (err: any) {
@@ -409,7 +413,9 @@ export default function FeatureTriageApp() {
         start_date: updatedTask.startDate,
         end_date: updatedTask.endDate,
         effort: updatedTask.effort,
-        status: updatedTask.status
+        status: updatedTask.status,
+        estimated_time: updatedTask.estimatedTime,
+        logged_time: updatedTask.loggedTime
       }).eq('id', updatedTask.id);
       if (error) throw error;
     } catch (err) {
@@ -1201,6 +1207,7 @@ export default function FeatureTriageApp() {
 
       {currentView === 'sprint-planner' ? (
         <SprintPlanner
+          currentUser={user}
           sprints={sprints}
           tasks={tasks}
           tickets={tickets}
@@ -1211,7 +1218,7 @@ export default function FeatureTriageApp() {
           onEditTask={handleEditTask}
           onDeleteTask={handleDeleteTask}
           onDeleteSprint={handleDeleteSprint}
-          isReadOnly={user?.role === 'PO' || user?.role === 'DEV' || user?.role === 'BA'}
+          userRole={user?.role}
         />
       ) : currentView === 'products' ? (
         <ProductsPage

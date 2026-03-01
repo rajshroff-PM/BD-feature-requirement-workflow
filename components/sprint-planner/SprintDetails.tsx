@@ -21,10 +21,11 @@ interface SprintDetailsProps {
     onEditTask: (task: Task) => void;
     onDeleteTask: (taskId: string) => void;
     onDeleteSprint?: (sprintId: string) => void;
-    isReadOnly?: boolean;
+    currentUser?: any;
+    userRole?: string;
 }
 
-export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, backlog, devTeam, onBack, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint, isReadOnly = false }) => {
+export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, backlog, devTeam, onBack, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint, currentUser, userRole }) => {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isEditSprintModalOpen, setIsEditSprintModalOpen] = useState(false);
     const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -41,8 +42,16 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
     };
 
     const filteredTasks = selectedMemberFilter
-        ? tasks.filter(t => t.assignee === selectedMemberFilter)
+        ? tasks.filter(t =>
+            t.assignee
+                .split(',')
+                .map(name => name.trim())
+                .includes(selectedMemberFilter)
+        )
         : tasks;
+
+    const canManageTasks = userRole === 'PM' || userRole === 'DEV';
+    const canManageSprintSettings = userRole === 'PM';
 
     const exportToCSV = () => {
         const headers = [`Sprint: ${sprint.name}`];
@@ -132,7 +141,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                             <div className="flex items-center space-x-3">
                                 <h2 className="text-2xl font-bold text-gray-900">{sprint.name}</h2>
                                 <Badge color={sprint.status === 'Active' ? 'green' : 'blue'}>{sprint.status}</Badge>
-                                {!isReadOnly && (
+                                {canManageSprintSettings && (
                                     <div className="flex space-x-1">
                                         <button
                                             onClick={() => setIsEditSprintModalOpen(true)}
@@ -230,7 +239,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                                 <Download className="h-4 w-4" />
                                 <span className="hidden sm:inline">PDF</span>
                             </button>
-                            {!isReadOnly && (
+                            {canManageTasks && (
                                 <button
                                     onClick={() => setIsAddModalOpen(true)}
                                     className="flex items-center space-x-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-2xl shadow-md transition-all text-sm ml-2"
@@ -272,14 +281,18 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Schedule</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Effort</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Status</th>
-                                {!isReadOnly && (
+                                {canManageTasks && (
                                     <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase">Actions</th>
                                 )}
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                             {filteredTasks.map((task, index) => (
-                                <tr key={task.id} className="hover:bg-gray-50">
+                                <tr
+                                    key={task.id}
+                                    className="hover:bg-gray-50 cursor-pointer"
+                                    onClick={() => setEditingTask(task)}
+                                >
                                     <td className="px-6 py-4 text-sm font-medium text-gray-500">
                                         {index + 1}
                                     </td>
@@ -305,8 +318,8 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                                             {task.status}
                                         </Badge>
                                     </td>
-                                    {!isReadOnly && (
-                                        <td className="px-6 py-4 text-right">
+                                    {canManageTasks && (
+                                        <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                                             <button
                                                 onClick={() => setEditingTask(task)}
                                                 className="text-gray-400 hover:text-violet-600 transition-colors"
@@ -350,12 +363,13 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
 
             {editingTask && (
                 <EditTaskModal
+                    currentUser={currentUser}
                     task={editingTask}
                     sprint={sprint}
                     onClose={() => setEditingTask(null)}
                     onSave={(updatedTask) => {
                         onEditTask(updatedTask);
-                        setEditingTask(null);
+                        setEditingTask(updatedTask);
                     }}
                     onDelete={(taskId) => {
                         onDeleteTask(taskId);

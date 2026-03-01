@@ -1,8 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
-import { Task, Sprint } from '../../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Clock, User as UserIcon } from 'lucide-react';
+import { Task, Sprint, TaskLog } from '../../types';
+import { supabase } from '../../supabaseClient';
+import { formatDate } from '../../lib/utils';
+import { Badge } from '../Badge';
 
 interface EditTaskModalProps {
+    currentUser?: any;
     task: Task;
     sprint: Sprint;
     onClose: () => void;
@@ -10,170 +14,641 @@ interface EditTaskModalProps {
     onDelete: (taskId: string) => void;
 }
 
-export const EditTaskModal: React.FC<EditTaskModalProps> = ({ task, sprint, onClose, onSave, onDelete }) => {
-    const [title, setTitle] = useState(task.title);
-    const [description, setDescription] = useState(task.description || '');
-    const [assignees, setAssignees] = useState<string[]>(task.assignee ? task.assignee.split(',').map(s => s.trim()).filter(Boolean) : []);
-    const [status, setStatus] = useState<Task['status']>(task.status);
-    const [effort, setEffort] = useState(task.effort);
-    const [startDate, setStartDate] = useState(task.startDate);
-    const [endDate, setEndDate] = useState(task.endDate);
+export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task, sprint, onClose, onSave, onDelete }) => {
+    // Time tracking
+    const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
+    const [timeSpentInput, setTimeSpentInput] = useState('');
+    const [timeRemainingInput, setTimeRemainingInput] = useState('');
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
+    const estimatedTime = task.estimatedTime || '';
+    const loggedTime = task.loggedTime || '';
+
+    const [isAssigneeDropdownOpen, setIsAssigneeDropdownOpen] = useState(false);
+    const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('');
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    const [activeTab, setActiveTab] = useState<'details' | 'history'>('details');
+    const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
+    const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+
+    const assignees = task.assignee ? task.assignee.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    // Calculate effort based on dates and assignees
+    const calculateEffort = (start: string, end: string, assigneesList: string[]) => {
+        const s = new Date(start);
+        const e = new Date(end);
+        if (isNaN(s.getTime()) || isNaN(e.getTime())) return 0;
+        const diffTime = Math.abs(e.getTime() - s.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Inclusive
+        const baseDays = diffDays > 0 ? diffDays : 0;
+        const multiplier = Math.max(1, assigneesList.length);
+        return baseDays * multiplier;
+    };
+
+    // Fetch logs
+    useEffect(() => {
+        if (activeTab === 'history') {
+            fetchTaskLogs();
+        }
+    }, [activeTab, task.id]);
+
+    const fetchTaskLogs = async () => {
+        setIsLoadingLogs(true);
+        try {
+            const { data, error } = await supabase
+                .from('task_logs')
+                .select(`
+                    id, task_id, profile_id, action_type, field_name, old_value, new_value, logged_amount, created_at,
+                    profiles:profile_id (full_name, avatar_url)
+                `)
+                .eq('task_id', task.id)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            // Map the nested profile data
+            const formattedLogs = (data || []).map((log: any) => ({
+                id: log.id,
+                taskId: log.task_id,
+                profileId: log.profile_id,
+                actionType: log.action_type,
+                fieldName: log.field_name,
+                oldValue: log.old_value,
+                newValue: log.new_value,
+                loggedAmount: log.logged_amount,
+                createdAt: log.created_at,
+                profile: log.profiles ? {
+                    fullName: log.profiles.full_name,
+                    avatarUrl: log.profiles.avatar_url
+                } : undefined
+            }));
+
+            setTaskLogs(formattedLogs);
+        } catch (error) {
+            console.error('Error fetching task logs:', error);
+        } finally {
+            setIsLoadingLogs(false);
+        }
+    };
+
+    // Close dropdown on click outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsAssigneeDropdownOpen(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
+
+
+
+    const parseTimeToHours = (timeStr: string) => {
+        if (!timeStr) return 0;
+        let hours = 0;
+        const matches = timeStr.match(/(\d+)\s*(w|d|h|m)/g);
+        if (matches) {
+            matches.forEach(match => {
+                const val = parseInt(match);
+                if (match.includes('w')) hours += val * 40; // 1 week = 40 hours
+                if (match.includes('d')) hours += val * 8;  // 1 day = 8 hours
+                if (match.includes('h')) hours += val;
+                if (match.includes('m')) hours += val / 60;
+            });
+        } else if (!isNaN(Number(timeStr))) {
+            hours = Number(timeStr);
+        }
+        return hours;
+    };
+
+    // Helper to format hours back into a string like "1d 4h"
+    const formatHoursToTime = (totalHours: number) => {
+        if (totalHours <= 0) return '';
+        const w = Math.floor(totalHours / 40);
+        const d = Math.floor((totalHours % 40) / 8);
+        const h = Math.floor(totalHours % 8);
+        const m = Math.round((totalHours % 1) * 60);
+
+        const parts = [];
+        if (w > 0) parts.push(`${w}w`);
+        if (d > 0) parts.push(`${d}d`);
+        if (h > 0) parts.push(`${h}h`);
+        if (m > 0) parts.push(`${m}m`);
+
+        return parts.join(' ');
+    };
+
+    const estimatedHours = parseTimeToHours(estimatedTime) || (task.effort * 8);
+    const loggedHours = parseTimeToHours(loggedTime);
+    const remainingHours = Math.max(0, estimatedHours - loggedHours);
+
+    // Calculate progress percentage
+    const progressPercent = estimatedHours > 0 ? Math.min(100, (loggedHours / estimatedHours) * 100) : 0;
+
+    // Helper to log changes to Supabase
+    const logTaskChange = async (actionType: 'update_field' | 'log_time', details: any) => {
+        if (!currentUser?.id) {
+            console.error('Missing currentUser.id - cannot log task change. Please refresh the page!', currentUser);
+            // Optionally alert the user too for debugging during development
+            return;
+        }
+
+        try {
+            await supabase.from('task_logs').insert({
+                task_id: task.id,
+                profile_id: currentUser.id,
+                action_type: actionType,
+                ...details
+            });
+
+            // Refresh logs if history tab is open
+            if (activeTab === 'history') {
+                fetchTaskLogs();
+            }
+        } catch (error) {
+            console.error('Error logging task change:', error);
+        }
+    };
+
+    // Helper to fire updates instantly
+    const updateTaskFields = (updates: Partial<Task>) => {
+        let hasChanges = false;
+
+        if (currentUser?.id) {
+            const logsToInsert = Object.keys(updates).map(key => {
+                const field = key as keyof Task;
+                const oldValue = task[field];
+                const newValue = updates[field];
+                if (oldValue !== newValue) {
+                    hasChanges = true;
+                    return {
+                        task_id: task.id,
+                        profile_id: currentUser.id,
+                        action_type: 'update_field',
+                        field_name: field,
+                        old_value: String(oldValue ?? ''),
+                        new_value: String(newValue ?? '')
+                    };
+                }
+                return null;
+            }).filter(Boolean);
+
+            if (logsToInsert.length > 0) {
+                supabase.from('task_logs').insert(logsToInsert).then(() => {
+                    if (activeTab === 'history') fetchTaskLogs();
+                });
+            }
+        } else {
+            hasChanges = Object.keys(updates).some(key => task[key as keyof Task] !== updates[key as keyof Task]);
+        }
+
+        if (hasChanges) {
+            onSave({
+                ...task,
+                ...updates
+            } as Task);
+        }
+    };
+
+    const updateTaskField = (field: keyof Task, value: any) => {
+        updateTaskFields({ [field]: value });
+    };
+
+    // Handle Time Tracking Modal Auto-Calculation
+    useEffect(() => {
+        if (isTimeModalOpen) {
+            const addedHours = parseTimeToHours(timeSpentInput);
+            const newRemaining = Math.max(0, remainingHours - addedHours);
+            setTimeRemainingInput(formatHoursToTime(newRemaining));
+        }
+    }, [timeSpentInput, isTimeModalOpen]);
+
+    const handleSaveTimeTracking = () => {
+        const addedHours = parseTimeToHours(timeSpentInput);
+        if (addedHours <= 0) return;
+
+        const newTotalLoggedHours = loggedHours + addedHours;
+        const newLoggedTimeStr = formatHoursToTime(newTotalLoggedHours);
+
+        // Log the time addition explicitly
+        logTaskChange('log_time', {
+            logged_amount: timeSpentInput
+        });
+
+        // Auto-save the new logged time directly (bypass updateTaskField to avoid generic update_field log)
         onSave({
             ...task,
-            title,
-            description,
-            assignee: assignees.join(', '),
-            status,
-            effort,
-            startDate,
-            endDate
+            loggedTime: newLoggedTimeStr
+        });
+
+        setIsTimeModalOpen(false);
+        setTimeSpentInput(''); // reset
+    };
+
+    const toggleAssignee = (name: string) => {
+        let newAssignees;
+        if (assignees.includes(name)) {
+            newAssignees = assignees.filter(a => a !== name);
+        } else {
+            newAssignees = [...assignees, name];
+        }
+
+        const assigneesStr = newAssignees.join(', ');
+        const newEffort = calculateEffort(task.startDate, task.endDate, newAssignees);
+
+        updateTaskFields({
+            assignee: assigneesStr,
+            effort: newEffort
         });
     };
+
+    // Close dropdown when clicking outside (simple implementation by closing on mouseleave of the container)
+
 
     return (
         <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
                 <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose}></div>
-                <div className="inline-block w-full max-w-md my-8 overflow-hidden text-left align-middle transition-all transform bg-white rounded-2xl shadow-xl">
-                    <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg leading-6 font-medium text-gray-900">Edit Task</h3>
-                            <button onClick={onClose}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
+                <div className="inline-block w-full max-w-4xl my-8 overflow-hidden text-left align-middle transition-all transform bg-white rounded-2xl shadow-xl">
+                    <div className="bg-white px-6 pt-6 pb-6 w-full">
+                        <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+                            <div className="flex items-center space-x-6">
+                                <h3 className="text-xl font-bold text-gray-900">Task details</h3>
+                                <div className="flex space-x-2 bg-gray-100 p-1 rounded-lg">
+                                    <button
+                                        onClick={() => setActiveTab('details')}
+                                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'details' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        Details
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('history')}
+                                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'history' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        Change Log
+                                    </button>
+                                </div>
+                            </div>
+                            <button type="button" onClick={onClose}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">Task Title</label>
-                                <input
-                                    type="text"
-                                    required
-                                    value={title}
-                                    onChange={(e) => setTitle(e.target.value)}
-                                    className="mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 focus:ring-violet-500 focus:border-violet-500"
-                                />
-                            </div>
+                        <div className="space-y-4">
+                            {activeTab === 'details' && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    {/* Left Column: Task Details */}
+                                    <div className="space-y-5">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">Task Title</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                value={task.title}
+                                                onChange={(e) => updateTaskField('title', e.target.value)}
+                                                className="block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500"
+                                            />
+                                        </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">Description</label>
-                                <textarea
-                                    value={description}
-                                    onChange={(e) => setDescription(e.target.value)}
-                                    rows={3}
-                                    className="mt-1 block w-full border border-gray-300 rounded-xl shadow-sm p-2 focus:ring-violet-500 focus:border-violet-500"
-                                    placeholder="Describe the task..."
-                                />
-                            </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">Description</label>
+                                            <textarea
+                                                value={task.description || ''}
+                                                onChange={(e) => updateTaskField('description', e.target.value)}
+                                                rows={5}
+                                                className="block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500"
+                                                placeholder="Describe the task..."
+                                            />
+                                        </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Assignee(s)</label>
-                                <div className="mt-1 border border-gray-300 rounded-xl shadow-sm p-3 max-h-32 overflow-y-auto bg-white">
-                                    {sprint.team && sprint.team.length > 0 ? (
-                                        sprint.team.map(m => (
-                                            <label key={m.id} className="flex items-center space-x-2 py-1 cursor-pointer">
+                                        <div className="relative" ref={dropdownRef}>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Assignee(s)</label>
+
+                                            {/* Custom Dropdown Trigger */}
+                                            <div
+                                                className="min-h-[42px] w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 bg-white flex flex-wrap gap-2 items-center cursor-text hover:border-violet-500 transition-colors"
+                                                onClick={() => {
+                                                    setIsAssigneeDropdownOpen(true);
+                                                    document.getElementById('assignee-search')?.focus();
+                                                }}
+                                            >
+                                                {assignees.map(a => (
+                                                    <span key={a} className="inline-flex items-center bg-violet-100 text-violet-800 text-xs font-medium px-2.5 py-1 rounded-full">
+                                                        {a}
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); toggleAssignee(a); }}
+                                                            className="ml-1.5 focus:outline-none hover:text-violet-900"
+                                                        >
+                                                            <X className="w-3 h-3" />
+                                                        </button>
+                                                    </span>
+                                                ))}
                                                 <input
-                                                    type="checkbox"
-                                                    checked={assignees.includes(m.name)}
+                                                    id="assignee-search"
+                                                    type="text"
+                                                    value={assigneeSearchQuery}
                                                     onChange={(e) => {
-                                                        if (e.target.checked) setAssignees([...assignees, m.name]);
-                                                        else setAssignees(assignees.filter(a => a !== m.name));
+                                                        setAssigneeSearchQuery(e.target.value);
+                                                        if (!isAssigneeDropdownOpen) setIsAssigneeDropdownOpen(true);
                                                     }}
-                                                    className="w-4 h-4 text-violet-600 focus:ring-violet-500 rounded border-gray-300"
+                                                    className="flex-1 min-w-[120px] outline-none text-sm bg-transparent"
+                                                    placeholder={assignees.length === 0 ? "Select or type assignees..." : ""}
                                                 />
-                                                <span className="text-sm text-gray-700">{m.name} ({m.role || 'Dev'})</span>
-                                            </label>
-                                        ))
+                                            </div>
+
+                                            {/* Dropdown Menu */}
+                                            {isAssigneeDropdownOpen && (
+                                                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto py-1">
+                                                    {sprint.team && sprint.team.length > 0 ? (
+                                                        (() => {
+                                                            const filtered = sprint.team.filter(m => m.name.toLowerCase().includes(assigneeSearchQuery.toLowerCase()));
+                                                            if (filtered.length === 0) {
+                                                                return <div className="px-4 py-3 text-sm text-gray-500 italic">No matching team members found</div>;
+                                                            }
+                                                            return filtered.map(m => (
+                                                                <div
+                                                                    key={m.id}
+                                                                    className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer"
+                                                                    onClick={() => {
+                                                                        toggleAssignee(m.name);
+                                                                        setAssigneeSearchQuery('');
+                                                                        document.getElementById('assignee-search')?.focus();
+                                                                    }}
+                                                                >
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={assignees.includes(m.name)}
+                                                                        readOnly
+                                                                        className="w-4 h-4 text-violet-600 rounded border-gray-300 mr-3 pointer-events-none"
+                                                                    />
+                                                                    <span className="text-sm font-medium text-gray-700">{m.name} <span className="text-gray-500 font-normal text-xs ml-1">({m.role || 'Dev'})</span></span>
+                                                                </div>
+                                                            ))
+                                                        })()
+                                                    ) : (
+                                                        <div className="px-4 py-3 text-sm text-gray-500 italic">No team selected for this sprint</div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Right Column: Schedule and Tracking */}
+                                    <div className="space-y-5">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">Start Date</label>
+                                                <input
+                                                    type="date"
+                                                    required
+                                                    min={sprint.startDate}
+                                                    max={sprint.endDate}
+                                                    value={task.startDate}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        const newEffort = calculateEffort(val, task.endDate, assignees);
+                                                        updateTaskFields({ startDate: val, effort: newEffort });
+                                                    }}
+                                                    className="block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">End Date</label>
+                                                <input
+                                                    type="date"
+                                                    required
+                                                    min={sprint.startDate}
+                                                    max={sprint.endDate}
+                                                    value={task.endDate}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        const newEffort = calculateEffort(task.startDate, val, assignees);
+                                                        updateTaskFields({ endDate: val, effort: newEffort });
+                                                    }}
+                                                    className="block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
+                                                <select
+                                                    value={task.status}
+                                                    onChange={(e) => updateTaskField('status', e.target.value as Task['status'])}
+                                                    className="block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 bg-white"
+                                                >
+                                                    <option value="To Do">To Do</option>
+                                                    <option value="In Progress">In Progress</option>
+                                                    <option value="Done">Done</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">Effort (Days)</label>
+                                                <input
+                                                    type="number"
+                                                    required
+                                                    min={0.5}
+                                                    step={0.5}
+                                                    value={task.effort}
+                                                    onChange={(e) => updateTaskField('effort', Number(e.target.value))}
+                                                    className="block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Time Tracking Section (Jira Style) */}
+                                        <div className="border border-gray-200 rounded-xl p-4 hover:bg-blue-50 transition-colors cursor-pointer group shadow-sm bg-gray-50" onClick={() => setIsTimeModalOpen(true)}>
+                                            <div className="flex justify-between items-center mb-3">
+                                                <h4 className="text-sm font-bold text-gray-800 group-hover:text-blue-700 transition-colors flex items-center">
+                                                    Time tracking
+                                                    <span className="ml-2 text-[10px] font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wider">Log time</span>
+                                                </h4>
+                                            </div>
+
+                                            {/* Progress Bar */}
+                                            <div className="mb-1">
+                                                <div className="flex h-2.5 overflow-hidden bg-gray-200 rounded-full">
+                                                    <div
+                                                        style={{ width: `${progressPercent}%` }}
+                                                        className="bg-blue-600 transition-all duration-500 rounded-full"
+                                                    ></div>
+                                                </div>
+                                                <div className="flex justify-between mt-2 text-[13px] font-medium text-gray-600">
+                                                    <span>{loggedTime || '0h'} logged</span>
+                                                    <span>{formatHoursToTime(remainingHours) || '0h'} remaining</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'history' && (
+                                <div className="min-h-[300px] border border-gray-100 rounded-xl bg-gray-50/50 p-6">
+                                    {isLoadingLogs ? (
+                                        <div className="flex justify-center items-center h-40">
+                                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-600"></div>
+                                        </div>
+                                    ) : taskLogs.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center h-40 text-gray-400">
+                                            <Clock className="w-8 h-8 mb-2 opacity-50" />
+                                            <p>No changes recorded yet.</p>
+                                        </div>
                                     ) : (
-                                        <span className="text-sm text-gray-500">No team selected for this sprint</span>
+                                        <div className="space-y-6">
+                                            {taskLogs.map((log) => (
+                                                <div key={log.id} className="flex gap-4">
+                                                    <div className="flex-shrink-0 mt-1">
+                                                        {log.profile?.avatarUrl ? (
+                                                            <img src={log.profile.avatarUrl} alt="" className="w-8 h-8 rounded-full bg-gray-200 object-cover" />
+                                                        ) : (
+                                                            <div className="w-8 h-8 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center text-xs font-bold">
+                                                                {log.profile?.fullName ? log.profile.fullName.substring(0, 2).toUpperCase() : <UserIcon className="w-4 h-4" />}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex-1 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <div className="text-sm font-medium text-gray-900">
+                                                                {log.profile?.fullName || 'Unknown User'}{' '}
+                                                                <span className="font-normal text-gray-600">
+                                                                    {log.actionType === 'log_time' ? (
+                                                                        <>logged <Badge color="blue">{log.loggedAmount}</Badge></>
+                                                                    ) : (
+                                                                        <>updated the <span className="font-semibold text-gray-800 capitalize">{log.fieldName}</span></>
+                                                                    )}
+                                                                </span>
+                                                            </div>
+                                                            <div className="text-xs text-gray-400 whitespace-nowrap ml-4">
+                                                                {formatDate(log.createdAt)} {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </div>
+                                                        </div>
+                                                        {log.actionType === 'update_field' && (
+                                                            <div className="text-sm flex items-center text-gray-600 bg-gray-50 p-2 rounded-lg border border-gray-100 inline-block mt-1">
+                                                                <span className="line-through text-gray-400">{log.oldValue || 'None'}</span>
+                                                                <span className="mx-2 text-gray-300">→</span>
+                                                                <span className="font-medium text-gray-900">{log.newValue || 'None'}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
                                     )}
                                 </div>
-                            </div>
+                            )}
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Start Date</label>
-                                    <input
-                                        type="date"
-                                        required
-                                        min={sprint.startDate}
-                                        max={sprint.endDate}
-                                        value={startDate}
-                                        onChange={(e) => setStartDate(e.target.value)}
-                                        className="mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 focus:ring-violet-500 focus:border-violet-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">End Date</label>
-                                    <input
-                                        type="date"
-                                        required
-                                        min={sprint.startDate}
-                                        max={sprint.endDate}
-                                        value={endDate}
-                                        onChange={(e) => setEndDate(e.target.value)}
-                                        className="mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 focus:ring-violet-500 focus:border-violet-500"
-                                    />
-                                </div>
-                            </div>
+                            {/* Time Tracking Modal Popup */}
+                            {isTimeModalOpen && (
+                                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                                    <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setIsTimeModalOpen(false)}></div>
+                                    <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden transform transition-all text-left">
+                                        <div className="bg-white px-6 pt-5 pb-6">
+                                            <div className="flex justify-between items-center mb-6">
+                                                <h3 className="text-lg font-bold text-gray-900">Time tracking</h3>
+                                                <button type="button" onClick={() => setIsTimeModalOpen(false)}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
+                                            </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Status</label>
-                                    <select
-                                        value={status}
-                                        onChange={(e) => setStatus(e.target.value as Task['status'])}
-                                        className="mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 focus:ring-violet-500 focus:border-violet-500"
-                                    >
-                                        <option value="To Do">To Do</option>
-                                        <option value="In Progress">In Progress</option>
-                                        <option value="Done">Done</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Effort (Days)</label>
-                                    <input
-                                        type="number"
-                                        required
-                                        min={0.5}
-                                        step={0.5}
-                                        value={effort}
-                                        onChange={(e) => setEffort(Number(e.target.value))}
-                                        className="mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 focus:ring-violet-500 focus:border-violet-500"
-                                    />
-                                </div>
-                            </div>
+                                            {/* Mini Progress Bar in Modal */}
+                                            <div className="mb-6">
+                                                <div className="flex h-2 overflow-hidden bg-gray-200 rounded-full">
+                                                    <div
+                                                        style={{ width: `${Math.min(100, ((loggedHours + parseTimeToHours(timeSpentInput)) / Math.max(estimatedHours, 1)) * 100)}%` }}
+                                                        className="bg-blue-600 transition-all duration-300"
+                                                    ></div>
+                                                </div>
+                                                <div className="flex justify-between mt-2 text-xs font-medium text-gray-500">
+                                                    <span>{formatHoursToTime(loggedHours + parseTimeToHours(timeSpentInput)) || '0h'} logged</span>
+                                                    <span>{timeRemainingInput || formatHoursToTime(remainingHours) || '0h'} remaining</span>
+                                                </div>
+                                            </div>
 
-                            <div className="mt-5 sm:mt-6 sm:flex sm:flex-row-reverse sm:justify-between sm:gap-3">
-                                <div className="sm:flex sm:gap-3">
+                                            <p className="text-sm text-gray-600 mb-4">
+                                                The original estimate for this work item was <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-800 font-mono text-xs font-semibold">{estimatedTime || `${task.effort}d`}</span>.
+                                            </p>
+
+                                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                                <div>
+                                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Time spent</label>
+                                                    <input
+                                                        type="text"
+                                                        value={timeSpentInput}
+                                                        onChange={(e) => setTimeSpentInput(e.target.value)}
+                                                        className="block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                                                        placeholder="e.g. 1h"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center">
+                                                        Time remaining <span className="ml-1 text-gray-400 cursor-help" title="Calculates automatically based on time spent">ⓘ</span>
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={timeRemainingInput}
+                                                        onChange={(e) => setTimeRemainingInput(e.target.value)}
+                                                        className="block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                                                        placeholder="e.g. 3h"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="text-xs text-gray-500 mb-6 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                                <p className="font-semibold mb-1">Use the format: 2w 4d 6h 45m</p>
+                                                <ul className="list-disc pl-5 mt-1 space-y-0.5">
+                                                    <li>w = weeks</li>
+                                                    <li>d = days</li>
+                                                    <li>h = hours</li>
+                                                    <li>m = minutes</li>
+                                                </ul>
+                                            </div>
+
+                                            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsTimeModalOpen(false)}
+                                                    className="px-4 py-2 bg-white border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSaveTimeTracking}
+                                                    className="px-4 py-2 bg-blue-600 rounded-xl text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+                                                >
+                                                    Save
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end">
+                                <div className="flex gap-3">
                                     <button
-                                        type="submit"
-                                        className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-md px-4 py-2 bg-violet-600 text-base font-medium text-white hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500 sm:w-auto sm:text-sm"
+                                        type="button"
+                                        onClick={() => {
+                                            if (window.confirm('Are you sure you want to delete this task?')) {
+                                                onDelete(task.id);
+                                            }
+                                        }}
+                                        className="inline-flex justify-center items-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-red-50 text-sm font-medium text-red-700 hover:bg-red-100 focus:outline-none transition-colors"
                                     >
-                                        Save Changes
+                                        Delete Task
                                     </button>
                                     <button
                                         type="button"
                                         onClick={onClose}
-                                        className="mt-3 w-full inline-flex justify-center rounded-xl border border-gray-300 shadow-md px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500 sm:mt-0 sm:w-auto sm:text-sm"
+                                        className="inline-flex justify-center items-center rounded-xl border border-transparent shadow-md px-5 py-2 bg-violet-600 text-sm font-medium text-white hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500 transition-colors"
                                     >
-                                        Cancel
+                                        Done
                                     </button>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (window.confirm('Are you sure you want to delete this task?')) {
-                                            onDelete(task.id);
-                                        }
-                                    }}
-                                    className="mt-3 w-full inline-flex justify-center rounded-xl border border-transparent shadow-md px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:mt-0 sm:w-auto sm:text-sm"
-                                >
-                                    Delete Task
-                                </button>
                             </div>
-                        </form>
+                        </div>
                     </div>
                 </div>
             </div>

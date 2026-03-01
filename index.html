@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -48,7 +48,7 @@
     <!-- Removed linking to missing index.css, rely on Tailwind classes instead -->
   </head>
   <body class="bg-slate-50 text-slate-900 font-sans antialiased">
-    <div id="root"></div>
+    <div id="root"></div><script>window.onerror = function(msg, url, lineNo, columnNo, error) { document.body.innerHTML += "<div style='color:red;padding:20px;background:#fee;'><h3>App Crashed</h3><p>" + msg + "</p><pre>" + (error && error.stack ? error.stack : "") + "</pre></div>"; return false; }; window.addEventListener("unhandledrejection", function(event) { document.body.innerHTML += "<div style='color:red;padding:20px;background:#fee;'><h3>Unhandled Promise Rejection</h3><p>" + event.reason + "</p></div>"; });</script>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

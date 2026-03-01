@@ -7,6 +7,7 @@ import { Badge } from '../Badge';
 import { formatDate } from '../../lib/utils';
 
 interface SprintPlannerProps {
+    currentUser?: any; // or import User and use it
     sprints: Sprint[];
     tasks: Task[];
     tickets: Ticket[]; // Full ticket list to filter approved backlog
@@ -17,10 +18,10 @@ interface SprintPlannerProps {
     onEditTask: (task: Task) => void;
     onDeleteTask: (taskId: string) => void;
     onDeleteSprint?: (sprintId: string) => void;
-    isReadOnly?: boolean;
+    userRole?: string;
 }
 
-export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, tickets, devTeam, onCreateSprint, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint, isReadOnly = false }) => {
+export const SprintPlanner: React.FC<SprintPlannerProps> = ({ currentUser, sprints, tasks, tickets, devTeam, onCreateSprint, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint, userRole }) => {
     const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -64,10 +65,15 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, ti
                         onDeleteSprint(sprintId);
                     }
                 }}
-                isReadOnly={isReadOnly}
+                currentUser={currentUser}
+                userRole={userRole}
             />
         );
     }
+
+    const canManageSprints = userRole === 'PM' || userRole === 'PO';
+    const canViewSprintPlanner = true; // Anyone here can view
+
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-in fade-in duration-500">
@@ -81,7 +87,7 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, ti
                     </h1>
                     <p className="text-gray-500 mt-1">Manage development cycles and assign tasks.</p>
                 </div>
-                {!isReadOnly && (
+                {canManageSprints && (
                     <button
                         onClick={() => setIsCreateModalOpen(true)}
                         className="flex items-center space-x-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-2xl shadow-md transition-all"
@@ -113,7 +119,7 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ sprints, tasks, ti
                                 </div>
                             </div>
                             <div className="flex items-center text-violet-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <span className="mr-2 text-sm font-medium">{isReadOnly ? 'View Sprint' : 'Manage Sprint'}</span>
+                                <span className="mr-2 text-sm font-medium">{canManageSprints ? 'Manage Sprint' : 'View Sprint'}</span>
                                 <ArrowRight className="w-5 h-5" />
                             </div>
                         </div>

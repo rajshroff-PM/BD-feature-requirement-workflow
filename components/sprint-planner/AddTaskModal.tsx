@@ -14,6 +14,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
     const [mode, setMode] = useState<'select' | 'manual'>('manual');
     const [manualTitle, setManualTitle] = useState('');
     const [manualDescription, setManualDescription] = useState('');
+    const [estimatedTime, setEstimatedTime] = useState('');
 
     // Task Form State
     const [assignees, setAssignees] = useState<string[]>(sprint.team && sprint.team.length > 0 ? [sprint.team[0].name] : []);
@@ -21,13 +22,15 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
     const [endDate, setEndDate] = useState(sprint.startDate); // Default to start
     const [error, setError] = useState('');
 
-    // Calculate effort based on dates
-    const calculateEffort = (start: string, end: string) => {
+    // Calculate effort based on dates and assignees
+    const calculateEffort = (start: string, end: string, assigneesList: string[]) => {
         const s = new Date(start);
         const e = new Date(end);
         const diffTime = Math.abs(e.getTime() - s.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Inclusive
-        return diffDays > 0 ? diffDays : 0;
+        const baseDays = diffDays > 0 ? diffDays : 0;
+        const multiplier = Math.max(1, assigneesList.length);
+        return baseDays * multiplier;
     };
 
     const handleAdd = () => {
@@ -60,7 +63,8 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
             assignee: assignees.join(', '),
             startDate,
             endDate,
-            effort: calculateEffort(startDate, endDate),
+            effort: calculateEffort(startDate, endDate, assignees),
+            estimatedTime,
             status: 'To Do'
         };
 
@@ -211,10 +215,22 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                                             </div>
                                         </div>
 
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Estimated Time</label>
+                                            <input
+                                                type="text"
+                                                value={estimatedTime}
+                                                onChange={(e) => setEstimatedTime(e.target.value)}
+                                                className="mt-1 block w-full border border-gray-300 rounded-xl shadow-sm p-2 focus:ring-violet-500 focus:border-violet-500"
+                                                placeholder="e.g. 1d, 4h, 2w"
+                                            />
+                                            <p className="mt-1 text-xs text-gray-500">Use format: w = weeks, d = days, h = hours.</p>
+                                        </div>
+
                                         <div className="bg-blue-50 p-3 rounded-xl flex items-center">
                                             <Calendar className="w-4 h-4 text-blue-500 mr-2" />
                                             <span className="text-sm text-blue-700 font-medium">
-                                                Estimated Effort: {calculateEffort(startDate, endDate)} Day(s)
+                                                Estimated Effort: {calculateEffort(startDate, endDate, assignees)} Day(s)
                                             </span>
                                         </div>
 

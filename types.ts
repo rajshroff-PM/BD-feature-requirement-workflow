@@ -41,7 +41,9 @@ export type BadgeColor = 'gray' | 'blue' | 'green' | 'yellow' | 'red' | 'purple'
 export type Role = 'BD' | 'PO' | 'BA' | 'PM' | 'DEV';
 
 export interface User {
+  id?: string;
   role: Role;
+  name?: string;
 }
 
 export interface DevTeamMember {
@@ -76,6 +78,24 @@ export interface Task {
   endDate: string;
   effort: number; // Days
   status: 'To Do' | 'In Progress' | 'Done';
+  estimatedTime?: string;
+  loggedTime?: string;
+}
+
+export interface TaskLog {
+  id: string;
+  taskId: string;
+  profileId?: string;
+  actionType: 'update_field' | 'log_time';
+  fieldName?: string;
+  oldValue?: string;
+  newValue?: string;
+  loggedAmount?: string;
+  createdAt: string;
+  profile?: {
+    fullName: string;
+    avatarUrl?: string;
+  };
 }
 
 export interface Product {
