@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Calendar } from 'lucide-react';
 import { Ticket, Task, Sprint } from '../../types';
+import { parseTimeToHours } from '../../lib/utils';
 
 interface AddTaskModalProps {
     sprint: Sprint;
@@ -23,9 +24,14 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
     const [error, setError] = useState('');
 
     // Calculate effort based on dates and assignees
-    const calculateEffort = (start: string, end: string, assigneesList: string[]) => {
+    const calculateEffort = (start: string, end: string, assigneesList: string[], estTimeStr: string) => {
+        const estHours = parseTimeToHours(estTimeStr);
+        if (estHours > 0) {
+            return Number((estHours / 8).toFixed(2));
+        }
         const s = new Date(start);
         const e = new Date(end);
+        if (isNaN(s.getTime()) || isNaN(e.getTime())) return 0;
         const diffTime = Math.abs(e.getTime() - s.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Inclusive
         const baseDays = diffDays > 0 ? diffDays : 0;
@@ -63,7 +69,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
             assignee: assignees.join(', '),
             startDate,
             endDate,
-            effort: calculateEffort(startDate, endDate, assignees),
+            effort: calculateEffort(startDate, endDate, assignees, estimatedTime),
             estimatedTime,
             status: 'To Do'
         };
@@ -230,7 +236,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                                         <div className="bg-blue-50 p-3 rounded-xl flex items-center">
                                             <Calendar className="w-4 h-4 text-blue-500 mr-2" />
                                             <span className="text-sm text-blue-700 font-medium">
-                                                Estimated Effort: {calculateEffort(startDate, endDate, assignees)} Day(s)
+                                                Estimated Effort: {calculateEffort(startDate, endDate, assignees, estimatedTime)} Day(s)
                                             </span>
                                         </div>
 

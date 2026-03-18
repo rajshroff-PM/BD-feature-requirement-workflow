@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { User as UserIcon, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
+import { User as UserIcon, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface LoginScreenProps {
     onLogin?: () => void; // Optional now, as App handles session state
@@ -10,10 +10,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
     const [loading, setLoading] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [isSignUp, setIsSignUp] = useState(false);
     const [message, setMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null);
-    const [fullName, setFullName] = useState(''); // Only for sign up
-    const [selectedRole, setSelectedRole] = useState('BD'); // Only for sign up initial role
 
     const handleGoogleLogin = async () => {
         setLoading(true);
@@ -39,30 +36,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
         setMessage(null);
 
         try {
-            if (isSignUp) {
-                // Sign Up
-                const { error } = await supabase.auth.signUp({
-                    email,
-                    password,
-                    options: {
-                        data: {
-                            full_name: fullName,
-                            role: selectedRole,
-                        },
-                    },
-                });
-                if (error) throw error;
-                setMessage({ type: 'success', text: 'Account created! You can now log in.' });
-                setIsSignUp(false); // Switch to login
-            } else {
-                // Sign In
-                const { error } = await supabase.auth.signInWithPassword({
-                    email,
-                    password,
-                });
-                if (error) throw error;
-                // App.tsx handles the session change via onAuthStateChange
-            }
+            // Sign In
+            const { error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
+            if (error) throw error;
+            // App.tsx handles the session change via onAuthStateChange
         } catch (error: any) {
             setMessage({ type: 'error', text: error.message || 'An error occurred' });
         } finally {
@@ -77,10 +57,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                     <UserIcon className="h-8 w-8 text-white" />
                 </div>
                 <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                    {isSignUp ? 'Create an Account' : 'Sign in to Paathner'}
+                    Sign in to Paathner
                 </h2>
                 <p className="mt-2 text-center text-sm text-gray-600">
-                    {isSignUp ? 'Join the workflow' : 'Manage feature requests'}
+                    Manage feature requests and track sprints
                 </p>
             </div>
 
@@ -120,39 +100,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                             </div>
                         </div>
 
-                        {isSignUp && (
-                            <>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Full Name</label>
-                                    <div className="mt-1">
-                                        <input
-                                            type="text"
-                                            required
-                                            value={fullName}
-                                            onChange={(e) => setFullName(e.target.value)}
-                                            className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-xl shadow-md focus:ring-violet-500 focus:border-violet-500 sm:text-sm"
-                                        />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Role</label>
-                                    <div className="mt-1">
-                                        <select
-                                            value={selectedRole}
-                                            onChange={(e) => setSelectedRole(e.target.value)}
-                                            className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-violet-500 focus:border-violet-500 sm:text-sm rounded-xl"
-                                        >
-                                            <option value="BD">BD (Business Development)</option>
-                                            <option value="PO">PO (Product Owner)</option>
-                                            <option value="BA">BA (Business Analyst)</option>
-                                            <option value="PM">PM (Product Manager)</option>
-                                            <option value="DEV">Dev (Developer)</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Email address</label>
                             <div className="mt-1">
@@ -187,32 +134,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                             >
                                 {loading ? <Loader2 className="animate-spin h-5 w-5" /> : (
                                     <>
-                                        {isSignUp ? 'Sign Up' : 'Sign In'} <ArrowRight className="ml-2 h-4 w-4" />
+                                        Sign In <ArrowRight className="ml-2 h-4 w-4" />
                                     </>
                                 )}
                             </button>
                         </div>
                     </form>
-
-                    <div className="mt-6">
-                        <div className="relative">
-                            <div className="absolute inset-0 flex items-center">
-                                <div className="w-full border-t border-gray-300" />
-                            </div>
-                            <div className="relative flex justify-center text-sm">
-                                <span className="px-2 bg-white text-gray-500">Or</span>
-                            </div>
-                        </div>
-
-                        <div className="mt-6 text-center">
-                            <button
-                                onClick={() => { setIsSignUp(!isSignUp); setMessage(null); }}
-                                className="text-violet-600 hover:text-violet-500 font-medium text-sm"
-                            >
-                                {isSignUp ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
-                            </button>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>

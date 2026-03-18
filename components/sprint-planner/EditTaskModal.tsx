@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Clock, User as UserIcon } from 'lucide-react';
 import { Task, Sprint, TaskLog } from '../../types';
 import { supabase } from '../../supabaseClient';
-import { formatDate } from '../../lib/utils';
+import { formatDate, parseTimeToHours, formatHoursToTime } from '../../lib/utils';
 import { Badge } from '../Badge';
 
 interface EditTaskModalProps {
@@ -12,9 +12,11 @@ interface EditTaskModalProps {
     onClose: () => void;
     onSave: (updatedTask: Task) => void;
     onDelete: (taskId: string) => void;
+    userRole?: string;
 }
 
-export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task, sprint, onClose, onSave, onDelete }) => {
+export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task, sprint, onClose, onSave, onDelete, userRole }) => {
+    const isReadOnly = userRole === 'PO';
     // Time tracking
     const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
     const [timeSpentInput, setTimeSpentInput] = useState('');
@@ -34,7 +36,11 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
     const assignees = task.assignee ? task.assignee.split(',').map(s => s.trim()).filter(Boolean) : [];
 
     // Calculate effort based on dates and assignees
-    const calculateEffort = (start: string, end: string, assigneesList: string[]) => {
+    const calculateEffort = (start: string, end: string, assigneesList: string[], estTimeStr: string) => {
+        const estHours = parseTimeToHours(estTimeStr);
+        if (estHours > 0) {
+            return Number((estHours / 8).toFixed(2));
+        }
         const s = new Date(start);
         const e = new Date(end);
         if (isNaN(s.getTime()) || isNaN(e.getTime())) return 0;
@@ -106,40 +112,7 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
 
 
 
-    const parseTimeToHours = (timeStr: string) => {
-        if (!timeStr) return 0;
-        let hours = 0;
-        const matches = timeStr.match(/(\d+)\s*(w|d|h|m)/g);
-        if (matches) {
-            matches.forEach(match => {
-                const val = parseInt(match);
-                if (match.includes('w')) hours += val * 40; // 1 week = 40 hours
-                if (match.includes('d')) hours += val * 8;  // 1 day = 8 hours
-                if (match.includes('h')) hours += val;
-                if (match.includes('m')) hours += val / 60;
-            });
-        } else if (!isNaN(Number(timeStr))) {
-            hours = Number(timeStr);
-        }
-        return hours;
-    };
 
-    // Helper to format hours back into a string like "1d 4h"
-    const formatHoursToTime = (totalHours: number) => {
-        if (totalHours <= 0) return '';
-        const w = Math.floor(totalHours / 40);
-        const d = Math.floor((totalHours % 40) / 8);
-        const h = Math.floor(totalHours % 8);
-        const m = Math.round((totalHours % 1) * 60);
-
-        const parts = [];
-        if (w > 0) parts.push(`${w}w`);
-        if (d > 0) parts.push(`${d}d`);
-        if (h > 0) parts.push(`${h}h`);
-        if (m > 0) parts.push(`${m}m`);
-
-        return parts.join(' ');
-    };
 
     const estimatedHours = parseTimeToHours(estimatedTime) || (task.effort * 8);
     const loggedHours = parseTimeToHours(loggedTime);
@@ -257,7 +230,7 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
         }
 
         const assigneesStr = newAssignees.join(', ');
-        const newEffort = calculateEffort(task.startDate, task.endDate, newAssignees);
+        const newEffort = calculateEffort(task.startDate, task.endDate, newAssignees, task.estimatedTime || '');
 
         updateTaskFields({
             assignee: assigneesStr,
@@ -305,19 +278,21 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                             <input
                                                 type="text"
                                                 required
+                                                disabled={isReadOnly}
                                                 value={task.title}
                                                 onChange={(e) => updateTaskField('title', e.target.value)}
-                                                className="block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500"
+                                                className={`block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-600' : ''}`}
                                             />
                                         </div>
 
                                         <div>
                                             <label className="block text-sm font-semibold text-gray-700 mb-1">Description</label>
                                             <textarea
+                                                disabled={isReadOnly}
                                                 value={task.description || ''}
                                                 onChange={(e) => updateTaskField('description', e.target.value)}
                                                 rows={5}
-                                                className="block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500"
+                                                className={`block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-600' : ''}`}
                                                 placeholder="Describe the task..."
                                             />
                                         </div>
@@ -327,35 +302,41 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
 
                                             {/* Custom Dropdown Trigger */}
                                             <div
-                                                className="min-h-[42px] w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 bg-white flex flex-wrap gap-2 items-center cursor-text hover:border-violet-500 transition-colors"
+                                                className={`min-h-[42px] w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 flex flex-wrap gap-2 items-center transition-colors ${isReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white cursor-text hover:border-violet-500'}`}
                                                 onClick={() => {
-                                                    setIsAssigneeDropdownOpen(true);
-                                                    document.getElementById('assignee-search')?.focus();
+                                                    if (!isReadOnly) {
+                                                        setIsAssigneeDropdownOpen(true);
+                                                        document.getElementById('assignee-search')?.focus();
+                                                    }
                                                 }}
                                             >
                                                 {assignees.map(a => (
-                                                    <span key={a} className="inline-flex items-center bg-violet-100 text-violet-800 text-xs font-medium px-2.5 py-1 rounded-full">
+                                                    <span key={a} className={`inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full ${isReadOnly ? 'bg-gray-200 text-gray-600' : 'bg-violet-100 text-violet-800'}`}>
                                                         {a}
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => { e.stopPropagation(); toggleAssignee(a); }}
-                                                            className="ml-1.5 focus:outline-none hover:text-violet-900"
-                                                        >
-                                                            <X className="w-3 h-3" />
-                                                        </button>
+                                                        {!isReadOnly && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => { e.stopPropagation(); toggleAssignee(a); }}
+                                                                className="ml-1.5 focus:outline-none hover:text-violet-900"
+                                                            >
+                                                                <X className="w-3 h-3" />
+                                                            </button>
+                                                        )}
                                                     </span>
                                                 ))}
-                                                <input
-                                                    id="assignee-search"
-                                                    type="text"
-                                                    value={assigneeSearchQuery}
-                                                    onChange={(e) => {
-                                                        setAssigneeSearchQuery(e.target.value);
-                                                        if (!isAssigneeDropdownOpen) setIsAssigneeDropdownOpen(true);
-                                                    }}
-                                                    className="flex-1 min-w-[120px] outline-none text-sm bg-transparent"
-                                                    placeholder={assignees.length === 0 ? "Select or type assignees..." : ""}
-                                                />
+                                                {!isReadOnly && (
+                                                    <input
+                                                        id="assignee-search"
+                                                        type="text"
+                                                        value={assigneeSearchQuery}
+                                                        onChange={(e) => {
+                                                            setAssigneeSearchQuery(e.target.value);
+                                                            if (!isAssigneeDropdownOpen) setIsAssigneeDropdownOpen(true);
+                                                        }}
+                                                        className="flex-1 min-w-[120px] outline-none text-sm bg-transparent"
+                                                        placeholder={assignees.length === 0 ? "Select or type assignees..." : ""}
+                                                    />
+                                                )}
                                             </div>
 
                                             {/* Dropdown Menu */}
@@ -403,15 +384,16 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                 <input
                                                     type="date"
                                                     required
+                                                    disabled={isReadOnly}
                                                     min={sprint.startDate}
                                                     max={sprint.endDate}
                                                     value={task.startDate}
                                                     onChange={(e) => {
                                                         const val = e.target.value;
-                                                        const newEffort = calculateEffort(val, task.endDate, assignees);
+                                                        const newEffort = calculateEffort(val, task.endDate, assignees, task.estimatedTime || '');
                                                         updateTaskFields({ startDate: val, effort: newEffort });
                                                     }}
-                                                    className="block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500"
+                                                    className={`block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
                                                 />
                                             </div>
                                             <div>
@@ -419,15 +401,16 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                 <input
                                                     type="date"
                                                     required
+                                                    disabled={isReadOnly}
                                                     min={sprint.startDate}
                                                     max={sprint.endDate}
                                                     value={task.endDate}
                                                     onChange={(e) => {
                                                         const val = e.target.value;
-                                                        const newEffort = calculateEffort(task.startDate, val, assignees);
+                                                        const newEffort = calculateEffort(task.startDate, val, assignees, task.estimatedTime || '');
                                                         updateTaskFields({ endDate: val, effort: newEffort });
                                                     }}
-                                                    className="block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500"
+                                                    className={`block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
                                                 />
                                             </div>
                                         </div>
@@ -436,9 +419,10 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                             <div>
                                                 <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
                                                 <select
+                                                    disabled={isReadOnly}
                                                     value={task.status}
                                                     onChange={(e) => updateTaskField('status', e.target.value as Task['status'])}
-                                                    className="block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 bg-white"
+                                                    className={`block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-600' : 'bg-white'}`}
                                                 >
                                                     <option value="To Do">To Do</option>
                                                     <option value="In Progress">In Progress</option>
@@ -446,25 +430,37 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-semibold text-gray-700 mb-1">Effort (Days)</label>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1 flex justify-between">
+                                                    <span>Estimated Time</span>
+                                                    <span className="font-normal text-xs text-gray-500">{(task.effort || 0)} day(s)</span>
+                                                </label>
                                                 <input
-                                                    type="number"
+                                                    type="text"
                                                     required
-                                                    min={0.5}
-                                                    step={0.5}
-                                                    value={task.effort}
-                                                    onChange={(e) => updateTaskField('effort', Number(e.target.value))}
-                                                    className="block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500"
+                                                    disabled={isReadOnly}
+                                                    value={task.estimatedTime || ''}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        const newEffort = calculateEffort(task.startDate, task.endDate, assignees, val);
+                                                        updateTaskFields({ estimatedTime: val, effort: newEffort });
+                                                    }}
+                                                    placeholder="e.g. 1d 4h"
+                                                    className={`block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-600' : ''}`}
                                                 />
                                             </div>
                                         </div>
 
                                         {/* Time Tracking Section (Jira Style) */}
-                                        <div className="border border-gray-200 rounded-xl p-4 hover:bg-blue-50 transition-colors cursor-pointer group shadow-sm bg-gray-50" onClick={() => setIsTimeModalOpen(true)}>
+                                        <div
+                                            className={`border border-gray-200 rounded-xl p-4 transition-colors group shadow-sm bg-gray-50 ${isReadOnly ? 'cursor-default' : 'hover:bg-blue-50 cursor-pointer'}`}
+                                            onClick={() => {
+                                                if (!isReadOnly) setIsTimeModalOpen(true);
+                                            }}
+                                        >
                                             <div className="flex justify-between items-center mb-3">
-                                                <h4 className="text-sm font-bold text-gray-800 group-hover:text-blue-700 transition-colors flex items-center">
+                                                <h4 className={`text-sm font-bold text-gray-800 transition-colors flex items-center ${isReadOnly ? '' : 'group-hover:text-blue-700'}`}>
                                                     Time tracking
-                                                    <span className="ml-2 text-[10px] font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wider">Log time</span>
+                                                    {!isReadOnly && <span className="ml-2 text-[10px] font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wider">Log time</span>}
                                                 </h4>
                                             </div>
 
@@ -628,17 +624,19 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
 
                             <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end">
                                 <div className="flex gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            if (window.confirm('Are you sure you want to delete this task?')) {
-                                                onDelete(task.id);
-                                            }
-                                        }}
-                                        className="inline-flex justify-center items-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-red-50 text-sm font-medium text-red-700 hover:bg-red-100 focus:outline-none transition-colors"
-                                    >
-                                        Delete Task
-                                    </button>
+                                    {!isReadOnly && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (window.confirm('Are you sure you want to delete this task?')) {
+                                                    onDelete(task.id);
+                                                }
+                                            }}
+                                            className="inline-flex justify-center items-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-red-50 text-sm font-medium text-red-700 hover:bg-red-100 focus:outline-none transition-colors"
+                                        >
+                                            Delete Task
+                                        </button>
+                                    )}
                                     <button
                                         type="button"
                                         onClick={onClose}

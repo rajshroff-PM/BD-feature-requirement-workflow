@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Users, Plus, Trash2 } from 'lucide-react';
 import { Sprint, DevTeamMember, SprintTeamMember } from '../../types';
+import { formatHoursToTime } from '../../lib/utils';
 
 interface CreateSprintModalProps {
     sprint?: Sprint;
@@ -190,7 +191,7 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
                                         Sprint Team & Capacity
                                     </h4>
                                     <span className="bg-violet-100 text-violet-800 text-xs font-bold px-2.5 py-1 rounded">
-                                        Total: {totalCapacity} Days
+                                        Total: {totalCapacity > 0 ? formatHoursToTime(totalCapacity * 8) : '0h'}
                                     </span>
                                 </div>
 
