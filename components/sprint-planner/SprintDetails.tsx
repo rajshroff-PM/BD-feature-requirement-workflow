@@ -7,7 +7,7 @@ import { AddTaskModal } from './AddTaskModal';
 import { EditTaskModal } from './EditTaskModal';
 import { CreateSprintModal } from './CreateSprintModal';
 import { Badge } from '../Badge';
-import { formatDate, getInitials } from '../../lib/utils';
+import { formatDate, getInitials, formatHoursToTime } from '../../lib/utils';
 import { DevTeamMember } from '../../types';
 
 interface SprintDetailsProps {
@@ -50,14 +50,14 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
         )
         : tasks;
 
-    const canManageTasks = userRole === 'PM' || userRole === 'DEV';
+    const canManageTasks = userRole === 'PM' || userRole === 'DEV' || userRole === 'DEV_LEAD';
     const canManageSprintSettings = userRole === 'PM';
 
     const exportToCSV = () => {
         const headers = [`Sprint: ${sprint.name}`];
         const subHeaders = [
             `Dates: ${formatDate(sprint.startDate)} to ${formatDate(sprint.endDate)}`,
-            `Capacity: ${sprint.capacity} days utilized: ${utilization}% (${totalEffort}/${sprint.capacity})`,
+            `Capacity: ${formatHoursToTime(sprint.capacity * 8) || '0h'} utilized: ${utilization}% (${formatHoursToTime(totalEffort * 8) || '0h'}/${formatHoursToTime(sprint.capacity * 8) || '0h'})`,
         ];
         if (sprint.goal) subHeaders.push(`Goal: "${sprint.goal.replace(/"/g, '""')}"`);
 
@@ -67,7 +67,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
             t.title,
             t.assignee,
             `${formatDate(t.startDate)} - ${formatDate(t.endDate)}`,
-            `${t.effort} Day(s)`,
+            formatHoursToTime(t.effort * 8) || '0h',
             t.status
         ]);
 
@@ -104,7 +104,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
         const detailsY = 30 + goalHeight + 4;
 
         doc.text(`Dates: ${formatDate(sprint.startDate)} to ${formatDate(sprint.endDate)}`, 14, detailsY);
-        doc.text(`Capacity: ${sprint.capacity} days (Utilized: ${utilization}% - ${totalEffort} days)`, 14, detailsY + 6);
+        doc.text(`Capacity: ${formatHoursToTime(sprint.capacity * 8) || '0h'} (Utilized: ${utilization}% - ${formatHoursToTime(totalEffort * 8) || '0h'})`, 14, detailsY + 6);
 
         // Tasks Table
         const tableColumn = ["Task Title", "Assignee", "Schedule", "Effort", "Status"];
@@ -112,7 +112,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
             t.title,
             t.assignee,
             `${formatDate(t.startDate)} to ${formatDate(t.endDate)}`,
-            `${t.effort} Day(s)`,
+            formatHoursToTime(t.effort * 8) || '0h',
             t.status
         ]);
 
@@ -177,7 +177,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                             <div className="mt-2 w-48">
                                 <div className="flex justify-between text-xs text-gray-500 mb-1">
                                     <span>Capacity Used</span>
-                                    <span>{utilization}% ({totalEffort}/{sprint.capacity} days)</span>
+                                    <span>{utilization}% ({formatHoursToTime(totalEffort * 8) || '0h'}/{formatHoursToTime(sprint.capacity * 8) || '0h'})</span>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
                                     <div
@@ -311,7 +311,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                                         {formatDate(task.startDate)} → {formatDate(task.endDate)}
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-600">
-                                        {task.effort} Day(s)
+                                        {formatHoursToTime(task.effort * 8) || '0h'}
                                     </td>
                                     <td className="px-6 py-4">
                                         <Badge color={task.status === 'Done' ? 'green' : task.status === 'In Progress' ? 'blue' : 'gray'}>
@@ -375,6 +375,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                         onDeleteTask(taskId);
                         setEditingTask(null);
                     }}
+                    userRole={userRole}
                 />
             )}
         </div>

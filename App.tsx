@@ -14,7 +14,8 @@ import {
   LogOut,
   Loader2,
   Filter,
-  Package
+  Package,
+  Shield
 } from 'lucide-react';
 import { Badge } from './components/Badge';
 import { formatDate, getInitials } from './lib/utils';
@@ -24,6 +25,8 @@ import { Ticket, BadgeColor, User as UserType, Sprint, Task, DevTeamMember, Prod
 import { SprintPlanner } from './components/sprint-planner/SprintPlanner';
 import { ProductsPage } from './components/products/ProductsPage';
 import { ManageDevTeam } from './components/ManageDevTeam';
+import { CapacityTracker } from './components/CapacityTracker';
+import { AdminDashboard } from './components/AdminDashboard';
 import { supabase } from './supabaseClient';
 
 // Initial state for a new ticket
@@ -96,8 +99,8 @@ export default function FeatureTriageApp() {
   });
 
   // New State for Sprint Planner & Dev Team
-  const currentView = (searchParams.get('view') as 'triage' | 'sprint-planner' | 'products' | 'team') || 'triage';
-  const setCurrentView = (view: 'triage' | 'sprint-planner' | 'products' | 'team') => {
+  const currentView = (searchParams.get('view') as 'triage' | 'sprint-planner' | 'capacity' | 'products' | 'team' | 'admin') || 'triage';
+  const setCurrentView = (view: 'triage' | 'sprint-planner' | 'capacity' | 'products' | 'team' | 'admin') => {
     setSearchParams(prev => { prev.set('view', view); return prev; });
   };
   const [sprints, setSprints] = useState<Sprint[]>([]);
@@ -648,7 +651,7 @@ export default function FeatureTriageApp() {
     else if (user?.role === 'PO') setActiveTab(1);
     else if (user?.role === 'BA') setActiveTab(2);
     else if (user?.role === 'PM') setActiveTab(3);
-    else if (user?.role === 'DEV') setActiveTab(4);
+    else if (user?.role === 'DEV' || user?.role === 'DEV_LEAD') setActiveTab(4);
     else setActiveTab(0); // Fallback
 
     setIsModalOpen(true);
@@ -800,7 +803,7 @@ export default function FeatureTriageApp() {
     if (user.role === 'PO' && tabIndex === 1) return true;
     if (user.role === 'BA' && tabIndex === 2) return true;
     if (user.role === 'PM' && tabIndex === 3) return true;
-    if (user.role === 'DEV' && tabIndex === 4) return true;
+    if ((user.role === 'DEV' || user.role === 'DEV_LEAD') && tabIndex === 4) return true;
     return false;
   };
 
@@ -865,11 +868,26 @@ export default function FeatureTriageApp() {
 
   if (needsRoleSelection && sessionUser) {
     return (
-      <RoleSelectionScreen
-        user={sessionUser}
-        onSave={handleSaveRole}
-        isLoading={roleSelectionLoading}
-      />
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-md border border-gray-200 p-8 max-w-md w-full text-center">
+          <div className="mx-auto h-14 w-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
+            <Shield className="h-7 w-7 text-red-500" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Not Authorized</h2>
+          <p className="text-gray-500 text-sm mb-1">
+            Your account (<span className="font-medium text-gray-700">{sessionUser.email}</span>) has not been onboarded yet.
+          </p>
+          <p className="text-gray-500 text-sm mb-6">
+            Please contact your <span className="font-semibold text-violet-600">PM or Super Admin</span> to get access.
+          </p>
+          <button
+            onClick={handleLogout}
+            className="w-full py-2 px-4 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium transition-colors"
+          >
+            Sign Out
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -936,7 +954,7 @@ export default function FeatureTriageApp() {
                         Products Portfolio
                       </button>
                     )}
-                    {user.role === 'DEV' && (
+                    {(user.role === 'DEV' || user.role === 'DEV_LEAD') && (
                       <button
                         onClick={() => {
                           setIsProfileMenuOpen(false);
@@ -946,6 +964,18 @@ export default function FeatureTriageApp() {
                       >
                         <UserIcon className="w-4 h-4 mr-2" />
                         Manage Dev Team
+                      </button>
+                    )}
+                    {['SUPER_ADMIN', 'PM', 'PO'].includes(user.role) && (
+                      <button
+                        onClick={() => {
+                          setIsProfileMenuOpen(false);
+                          setCurrentView('admin');
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-violet-700 font-medium hover:bg-violet-50 flex items-center transition-colors border-t border-gray-100 mt-1 pt-1"
+                      >
+                        <Shield className="w-4 h-4 mr-2" />
+                        Admin Panel
                       </button>
                     )}
                     <button
@@ -966,8 +996,8 @@ export default function FeatureTriageApp() {
         </div>
       </header>
 
-      {/* Sub Navigation (Only show in Triage and Sprint Planner) */}
-      {(currentView === 'triage' || currentView === 'sprint-planner') && (
+      {/* Sub Navigation */}
+      {(currentView === 'triage' || currentView === 'sprint-planner' || currentView === 'capacity') && (
         <div className="bg-white border-b border-gray-200 sticky top-16 z-[9] shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
             <div className="flex items-center space-x-6 h-full">
@@ -980,7 +1010,7 @@ export default function FeatureTriageApp() {
               >
                 Triage Matrix
               </button>
-              {(user?.role === 'PM' || user?.role === 'DEV' || user?.role === 'PO' || user?.role === 'BA') && (
+              {(user?.role === 'PM' || user?.role === 'DEV' || user?.role === 'DEV_LEAD' || user?.role === 'PO' || user?.role === 'BA') && (
                 <button
                   onClick={() => setCurrentView('sprint-planner')}
                   className={`h-full flex items-center border-b-2 px-1 text-sm font-bold transition-colors ${currentView === 'sprint-planner'
@@ -989,6 +1019,17 @@ export default function FeatureTriageApp() {
                     }`}
                 >
                   Sprint Planner
+                </button>
+              )}
+              {(user?.role === 'PM' || user?.role === 'PO' || user?.role === 'DEV_LEAD') && (
+                <button
+                  onClick={() => setCurrentView('capacity')}
+                  className={`h-full flex items-center border-b-2 px-1 text-sm font-bold transition-colors ${currentView === 'capacity'
+                    ? 'border-violet-600 text-violet-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-900 hover:border-gray-300'
+                    }`}
+                >
+                  Capacity Tracker
                 </button>
               )}
             </div>
@@ -1220,6 +1261,12 @@ export default function FeatureTriageApp() {
           onDeleteSprint={handleDeleteSprint}
           userRole={user?.role}
         />
+      ) : currentView === 'capacity' ? (
+        <CapacityTracker
+          sprints={sprints}
+          tasks={tasks}
+          onEditSprint={handleEditSprint}
+        />
       ) : currentView === 'products' ? (
         <ProductsPage
           products={products}
@@ -1235,6 +1282,8 @@ export default function FeatureTriageApp() {
         <ManageDevTeam
           onClose={() => fetchDevTeam()}
         />
+      ) : currentView === 'admin' && ['SUPER_ADMIN', 'PM', 'PO'].includes(user?.role || '') ? (
+        <AdminDashboard />
       ) : (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">

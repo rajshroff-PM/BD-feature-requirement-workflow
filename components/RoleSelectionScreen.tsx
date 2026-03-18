@@ -50,6 +50,7 @@ export const RoleSelectionScreen: React.FC<RoleSelectionScreenProps> = ({ user, 
                                 <option value="BA">BA (Business Analyst)</option>
                                 <option value="PM">PM (Product Manager)</option>
                                 <option value="DEV">Dev (Developer)</option>
+                                <option value="DEV_LEAD">Dev Team Lead</option>
                             </select>
                         </div>
                         <button

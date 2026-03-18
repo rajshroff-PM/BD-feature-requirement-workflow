@@ -38,7 +38,7 @@ export interface Ticket {
 
 export type BadgeColor = 'gray' | 'blue' | 'green' | 'yellow' | 'red' | 'purple';
 
-export type Role = 'BD' | 'PO' | 'BA' | 'PM' | 'DEV';
+export type Role = 'SUPER_ADMIN' | 'BD' | 'PO' | 'BA' | 'PM' | 'DEV' | 'DEV_LEAD';
 
 export interface User {
   id?: string;
@@ -54,6 +54,7 @@ export interface DevTeamMember {
 
 export interface SprintTeamMember extends DevTeamMember {
   daysWorking: number;
+  presentDates?: string[];
 }
 
 export interface Sprint {
