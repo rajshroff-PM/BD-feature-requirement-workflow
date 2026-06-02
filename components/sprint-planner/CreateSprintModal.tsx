@@ -19,7 +19,41 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
     const [team, setTeam] = useState<SprintTeamMember[]>([]);
     const [status, setStatus] = useState<Sprint['status']>('Planned');
     const [dateError, setDateError] = useState('');
-    const [workingDaysInSprint, setWorkingDaysInSprint] = useState<number>(6);
+    const [sprintDurationDays, setSprintDurationDays] = useState<number>(15);
+    const [calculatedWorkingDays, setCalculatedWorkingDays] = useState<number>(0);
+
+    // Calculate number of working days in a sprint
+    // Rules: weekdays (Mon-Fri) are working days, Sundays are weekoffs.
+    // Saturdays are working days ONLY if they are the 1st, 3rd, or 5th Saturday of the month.
+    // 2nd and 4th Saturdays are weekoffs.
+    const countWorkingDays = (startStr: string, endStr: string): number => {
+        if (!startStr || !endStr) return 0;
+        const start = new Date(startStr);
+        const end = new Date(endStr);
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+
+        let workingDays = 0;
+        let current = new Date(start);
+
+        while (current <= end) {
+            const dayOfWeek = current.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+
+            if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                // Monday to Friday is always working
+                workingDays++;
+            } else if (dayOfWeek === 6) {
+                const dateNum = current.getDate();
+                const occurrence = Math.ceil(dateNum / 7);
+                if ([1, 3, 5].includes(occurrence)) {
+                    // 1st, 3rd, 5th Saturday is a working day
+                    workingDays++;
+                }
+            }
+            current.setDate(current.getDate() + 1);
+        }
+
+        return workingDays;
+    };
 
     useEffect(() => {
         if (sprint) {
@@ -34,7 +68,8 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
                 const start = new Date(sprint.startDate);
                 const end = new Date(sprint.endDate);
                 const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                setWorkingDaysInSprint(diffDays > 0 ? diffDays : 6);
+                setSprintDurationDays(diffDays > 0 ? diffDays : 15);
+                setCalculatedWorkingDays(countWorkingDays(sprint.startDate, sprint.endDate));
             }
         }
     }, [sprint]);
@@ -50,7 +85,8 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
 
         const devMember = devTeam.find(m => m.id === memberId);
         if (devMember) {
-            setTeam([...team, { ...devMember, daysWorking: workingDaysInSprint }]); // dynamic default
+            // Default developer working days to the calculated working days of the sprint
+            setTeam([...team, { ...devMember, daysWorking: calculatedWorkingDays || 13 }]);
         }
     };
 
@@ -62,6 +98,41 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
         setTeam(team.map(m => m.id === id ? { ...m, daysWorking } : m));
     };
 
+    const getEndDayName = () => {
+        if (!endDate) return '';
+        const date = new Date(endDate);
+        if (isNaN(date.getTime())) return '';
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        return days[date.getDay()];
+    };
+
+    const handleDurationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = Number(e.target.value);
+        if (val < 1) return;
+
+        setSprintDurationDays(val);
+
+        if (startDate) {
+            const date = new Date(startDate);
+            const endDateObj = new Date(date);
+            endDateObj.setDate(date.getDate() + (val - 1));
+            const calculatedEnd = endDateObj.toISOString().split('T')[0];
+            setEndDate(calculatedEnd);
+
+            const workingDays = countWorkingDays(startDate, calculatedEnd);
+            const oldWorkingDays = calculatedWorkingDays;
+            setCalculatedWorkingDays(workingDays);
+
+            // Update default capacities for already added team members if their capacity matched the old calculated working days count
+            setTeam(prevTeam => prevTeam.map(member => {
+                if (member.daysWorking === oldWorkingDays || member.daysWorking === 0) {
+                    return { ...member, daysWorking: workingDays };
+                }
+                return member;
+            }));
+        }
+    };
+
     const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newStartDate = e.target.value;
         setStartDate(newStartDate);
@@ -69,39 +140,27 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
 
         if (newStartDate) {
             const date = new Date(newStartDate);
-            const day = date.getDay(); // 0 = Sun, 1 = Mon, ...
-
-            if (day !== 1) { // 1 is Monday
-                setDateError('Sprints must start on a Monday.');
-                // We still allow them to select it but show error
-            }
-
-            // Determine if the Saturday of this week is a working Saturday
-            const saturday = new Date(date);
-            saturday.setDate(date.getDate() + (6 - day)); // Move to Saturday (6)
-
-            // Find occurrence of this Saturday in the month
-            const occurrence = Math.ceil(saturday.getDate() / 7);
-            const isWorkingSaturday = [1, 3, 5].includes(occurrence);
-
-            const daysInSprint = isWorkingSaturday ? 6 : 5;
-            setWorkingDaysInSprint(daysInSprint);
 
             // Calculate End Date
             const endDateObj = new Date(date);
-            endDateObj.setDate(date.getDate() + (daysInSprint - 1));
-            setEndDate(endDateObj.toISOString().split('T')[0]);
+            endDateObj.setDate(date.getDate() + (sprintDurationDays - 1));
+            const calculatedEnd = endDateObj.toISOString().split('T')[0];
+            setEndDate(calculatedEnd);
 
-            // Update default capacities for already added team members
+            const workingDays = countWorkingDays(newStartDate, calculatedEnd);
+            const oldWorkingDays = calculatedWorkingDays;
+            setCalculatedWorkingDays(workingDays);
+
+            // Update capacities for team members
             setTeam(prevTeam => prevTeam.map(member => {
-                if (member.daysWorking === workingDaysInSprint || member.daysWorking > daysInSprint) {
-                    return { ...member, daysWorking: daysInSprint };
+                if (member.daysWorking === oldWorkingDays || member.daysWorking === 0) {
+                    return { ...member, daysWorking: workingDays };
                 }
                 return member;
             }));
-
         } else {
             setEndDate('');
+            setCalculatedWorkingDays(0);
         }
     };
 
@@ -158,9 +217,23 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
                                 />
                             </div>
 
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Sprint Duration (Calendar Days)</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="90"
+                                    required
+                                    value={sprintDurationDays}
+                                    onChange={handleDurationChange}
+                                    className="mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 focus:ring-violet-500 focus:border-violet-500"
+                                    placeholder="e.g. 15"
+                                />
+                            </div>
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">Start Date (Mon)</label>
+                                    <label className="block text-sm font-medium text-gray-700">Start Date</label>
                                     <input
                                         type="date"
                                         required
@@ -171,7 +244,9 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
                                     {dateError && <p className="text-xs text-red-600 mt-1">{dateError}</p>}
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">End Date ({workingDaysInSprint === 6 ? 'Sat' : 'Fri'})</label>
+                                    <label className="block text-sm font-medium text-gray-700 font-semibold">
+                                        End Date {getEndDayName() ? `(${getEndDayName()})` : ''}
+                                    </label>
                                     <input
                                         type="date"
                                         required
@@ -179,7 +254,12 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
                                         value={endDate}
                                         className="mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 bg-gray-100 text-gray-500 cursor-not-allowed"
                                     />
-                                    <p className="text-xs text-gray-400 mt-1">Auto-calculated ({workingDaysInSprint} days)</p>
+                                    <p className="text-xs text-gray-400 mt-1 font-medium">
+                                        {startDate 
+                                            ? `Auto-calculated (${sprintDurationDays} calendar days, ${calculatedWorkingDays} working days)` 
+                                            : `Auto-calculated (${sprintDurationDays} calendar days)`
+                                        }
+                                    </p>
                                 </div>
                             </div>
 

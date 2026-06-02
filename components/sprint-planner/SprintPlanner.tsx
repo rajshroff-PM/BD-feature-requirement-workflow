@@ -71,7 +71,7 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ currentUser, sprin
         );
     }
 
-    const canManageSprints = userRole === 'PM' || userRole === 'PO';
+    const canManageSprints = userRole === 'PM' || userRole === 'PO' || userRole === 'DEV_LEAD';
     const canViewSprintPlanner = true; // Anyone here can view
 
 

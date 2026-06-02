@@ -51,7 +51,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
         : tasks;
 
     const canManageTasks = userRole === 'PM' || userRole === 'DEV' || userRole === 'DEV_LEAD';
-    const canManageSprintSettings = userRole === 'PM';
+    const canManageSprintSettings = userRole === 'PM' || userRole === 'DEV_LEAD';
 
     const exportToCSV = () => {
         const headers = [`Sprint: ${sprint.name}`];
