@@ -19,7 +19,7 @@ export const AdminDashboard: React.FC = () => {
     // New User Form State
     const [newEmail, setNewEmail] = useState('');
     const [newName, setNewName] = useState('');
-    const [newRole, setNewRole] = useState('PO');
+    const [newRole, setNewRole] = useState('MANAGEMENT');
 
     const fetchUsers = async () => {
         try {
@@ -105,7 +105,7 @@ export const AdminDashboard: React.FC = () => {
             setModalOpen(false);
             setNewEmail('');
             setNewName('');
-            setNewRole('PO');
+            setNewRole('MANAGEMENT');
             fetchUsers();
         } catch (err: any) {
             console.error('Onboarding failed:', err);
@@ -115,7 +115,7 @@ export const AdminDashboard: React.FC = () => {
         }
     };
 
-    const roleOptions = ['SUPER_ADMIN', 'BD', 'PO', 'BA', 'PM', 'DEV', 'DEV_LEAD'];
+    const roleOptions = ['SUPER_ADMIN', 'BD', 'MANAGEMENT', 'BA', 'PM', 'DEV', 'DEV_LEAD', 'QA'];
 
     return (
         <div className="p-6 max-w-7xl mx-auto">

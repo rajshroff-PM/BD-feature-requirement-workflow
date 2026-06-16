@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Sprint, Task, Ticket } from '../../types';
-import { ChevronLeft, Plus, Calendar, User, Pencil, Save, Trash2, Download, X, Filter } from 'lucide-react';
+import { Sprint, Task, Ticket, TicketType } from '../../types';
+import { ChevronLeft, Plus, Calendar, User, Pencil, Trash2, Download, X, Filter, CheckCircle2, Bug as BugIcon, LayoutList, LayoutGrid } from 'lucide-react';
+import { TicketTypeBadge } from '../TicketTypeBadge';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { AddTaskModal } from './AddTaskModal';
 import { EditTaskModal } from './EditTaskModal';
+import { CreateTicketModal } from './CreateTicketModal';
 import { CreateSprintModal } from './CreateSprintModal';
+import { SprintBoard } from './SprintBoard';
 import { Badge } from '../Badge';
 import { formatDate, getInitials, formatHoursToTime } from '../../lib/utils';
 import { DevTeamMember } from '../../types';
@@ -13,6 +15,8 @@ import { DevTeamMember } from '../../types';
 interface SprintDetailsProps {
     sprint: Sprint;
     tasks: Task[];
+    allTasks: Task[];       // full task list for parent pickers
+    allSprints: Sprint[];   // full sprint list for sprint picker
     backlog: Ticket[];
     devTeam: DevTeamMember[];
     onBack: () => void;
@@ -25,12 +29,19 @@ interface SprintDetailsProps {
     userRole?: string;
 }
 
-export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, backlog, devTeam, onBack, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint, currentUser, userRole }) => {
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+export const SprintDetails: React.FC<SprintDetailsProps> = ({
+    sprint, tasks, allTasks, allSprints, backlog: _backlog, devTeam,
+    onBack, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint,
+    currentUser, userRole,
+}) => {
+    const [isCreateOpen, setIsCreateOpen]         = useState(false);
+    const [createDefaultType, setCreateDefaultType]   = useState<TicketType | undefined>(undefined);
+    const [createDefaultParent, setCreateDefaultParent] = useState<string | undefined>(undefined);
     const [isEditSprintModalOpen, setIsEditSprintModalOpen] = useState(false);
-    const [editingTask, setEditingTask] = useState<Task | null>(null);
+    const [editingTask, setEditingTask]           = useState<Task | null>(null);
     const [selectedMemberFilter, setSelectedMemberFilter] = useState<string | null>(null);
-
+    const [selectedTypeFilter, setSelectedTypeFilter] = useState<TicketType | null>(null);
+    const [viewMode, setViewMode] = useState<'list' | 'board'>('board');
     // Calculate Utilization
     const totalEffort = tasks.reduce((sum, task) => sum + task.effort, 0);
     const utilization = Math.round((totalEffort / sprint.capacity) * 100);
@@ -41,14 +52,16 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
         return 'bg-green-500';
     };
 
-    const filteredTasks = selectedMemberFilter
-        ? tasks.filter(t =>
-            t.assignee
-                .split(',')
-                .map(name => name.trim())
-                .includes(selectedMemberFilter)
-        )
-        : tasks;
+    const nonEpicTasks = tasks.filter(t => t.ticketType !== 'Epic');
+    const filteredTasks = nonEpicTasks.filter(t => {
+        const matchAssignee = selectedMemberFilter 
+            ? t.assignee.split(',').map(name => name.trim()).includes(selectedMemberFilter)
+            : true;
+        const matchType = selectedTypeFilter
+            ? t.ticketType === selectedTypeFilter
+            : true;
+        return matchAssignee && matchType;
+    });
 
     const canManageTasks = userRole === 'PM' || userRole === 'DEV' || userRole === 'DEV_LEAD';
     const canManageSprintSettings = userRole === 'PM' || userRole === 'DEV_LEAD';
@@ -130,164 +143,260 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-right duration-300">
-            {/* Header */}
-            <div className="bg-white rounded-2xl shadow-md border border-gray-200 p-6">
-                <div className="flex flex-col md:flex-row justify-between md:items-center space-y-4 md:space-y-0">
-                    <div className="flex items-center space-x-4">
-                        <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                            <ChevronLeft className="w-5 h-5 text-gray-500" />
+            {/* Header Section */}
+            <div className="flex flex-col gap-5 mb-6">
+                {/* Top Row: Context & Sprint Actions */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 px-1">
+                    <div className="flex items-start md:items-center gap-4">
+                        <button onClick={onBack} className="p-2.5 bg-white hover:bg-gray-50 text-gray-500 border border-gray-200 rounded-xl transition-all shadow-sm shrink-0">
+                            <ChevronLeft className="w-5 h-5" />
                         </button>
                         <div>
-                            <div className="flex items-center space-x-3">
-                                <h2 className="text-2xl font-bold text-gray-900">{sprint.name}</h2>
+                            <div className="flex items-center flex-wrap gap-3">
+                                <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight">{sprint.name}</h2>
                                 <Badge color={sprint.status === 'Active' ? 'green' : 'blue'}>{sprint.status}</Badge>
-                                {canManageSprintSettings && (
-                                    <div className="flex space-x-1">
-                                        <button
-                                            onClick={() => setIsEditSprintModalOpen(true)}
-                                            className="p-1 text-gray-400 hover:text-violet-600 transition-colors"
-                                            title="Edit Sprint"
-                                        >
-                                            <Pencil className="w-4 h-4" />
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                if (window.confirm(`Are you sure you want to delete the sprint "${sprint.name}"? All associated tasks will be removed.`)) {
-                                                    if (onDeleteSprint) onDeleteSprint(sprint.id);
-                                                }
-                                            }}
-                                            className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                                            title="Delete Sprint"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                )}
+                                <span className="flex items-center text-xs font-semibold text-gray-600 bg-white px-2.5 py-1.5 rounded-lg border border-gray-200 shadow-sm">
+                                    <Calendar className="w-3.5 h-3.5 mr-1.5 text-gray-400" />
+                                    {formatDate(sprint.startDate)} - {formatDate(sprint.endDate)}
+                                </span>
                             </div>
-                            <p className="text-sm text-gray-500 mt-1">{sprint.goal}</p>
+                            {sprint.goal && <p className="text-sm text-gray-500 mt-2 font-medium">{sprint.goal}</p>}
                         </div>
                     </div>
 
-                    <div className="flex items-center space-x-6">
-                        <div className="text-right">
-                            <p className="text-sm font-medium text-gray-900 flex items-center justify-end">
-                                <Calendar className="w-4 h-4 mr-2 text-gray-400" />
-                                {formatDate(sprint.startDate)} - {formatDate(sprint.endDate)}
-                            </p>
-                            <div className="mt-2 w-48">
-                                <div className="flex justify-between text-xs text-gray-500 mb-1">
-                                    <span>Capacity Used</span>
-                                    <span>{utilization}% ({formatHoursToTime(totalEffort * 8) || '0h'}/{formatHoursToTime(sprint.capacity * 8) || '0h'})</span>
-                                </div>
-                                <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
-                                    <div
-                                        className={`h-2.5 rounded-full ${getUtilizationColor(utilization)} transition-all duration-500`}
-                                        style={{ width: `${Math.min(utilization, 100)}%` }}
-                                    ></div>
-                                </div>
+                    <div className="flex items-center gap-5 w-full md:w-auto mt-2 md:mt-0">
+                        {/* Capacity Summary */}
+                        <div className="flex flex-col items-end shrink-0 hidden sm:flex">
+                            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Capacity: {utilization}%</div>
+                            <div className="w-32 bg-gray-200/80 rounded-full h-1.5 overflow-hidden">
+                                <div
+                                    className={`h-1.5 rounded-full ${getUtilizationColor(utilization)} transition-all duration-500`}
+                                    style={{ width: `${Math.min(utilization, 100)}%` }}
+                                ></div>
                             </div>
                         </div>
 
-                        {sprint.team && sprint.team.length > 0 && (
-                            <div className="flex flex-col items-end mt-2">
-                                <span className="text-xs text-gray-500 mb-1 font-medium">Sprint Team</span>
-                                <div className="flex items-center space-x-2">
-                                    <div className="flex -space-x-2 overflow-hidden p-1">
-                                        {sprint.team.map((member) => {
-                                            const isSelected = selectedMemberFilter === member.name;
-                                            return (
-                                                <div
-                                                    key={member.id}
-                                                    onClick={() => setSelectedMemberFilter(isSelected ? null : member.name)}
-                                                    className={`inline-block h-8 w-8 rounded-full ring-2 ring-white flex items-center justify-center font-bold text-xs cursor-pointer transition-all shadow-sm ${isSelected ? 'bg-violet-600 text-white z-10 scale-110 ring-violet-200' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'
-                                                        } ${selectedMemberFilter && !isSelected ? 'opacity-40 grayscale' : ''}`}
-                                                    title={`${member.name} (${member.daysWorking} days) - Click to filter tasks`}
-                                                >
-                                                    {getInitials(member.name)}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    {selectedMemberFilter && (
-                                        <button
-                                            onClick={() => setSelectedMemberFilter(null)}
-                                            className="ml-1 p-1 rounded-full bg-red-50 hover:bg-red-100 text-red-500 transition-colors"
-                                            title="Clear Filter"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    )}
+                        {canManageSprintSettings && (
+                            <>
+                                <div className="w-px h-8 bg-gray-300 hidden sm:block"></div>
+                                <div className="flex items-center gap-2 ml-auto md:ml-0">
+                                    <button
+                                        onClick={() => setIsEditSprintModalOpen(true)}
+                                        className="p-2 bg-white border border-gray-200 shadow-sm rounded-xl text-gray-500 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50 transition-all flex items-center justify-center"
+                                        title="Edit Sprint"
+                                    >
+                                        <Pencil className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (window.confirm(`Are you sure you want to delete the sprint "${sprint.name}"? All associated tasks will be removed.`)) {
+                                                if (onDeleteSprint) onDeleteSprint(sprint.id);
+                                            }
+                                        }}
+                                        className="p-2 bg-white border border-gray-200 shadow-sm rounded-xl text-gray-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-all flex items-center justify-center"
+                                        title="Delete Sprint"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
                                 </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                {/* Bottom Row: Toolbar */}
+                <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-200 flex flex-col lg:flex-row justify-between lg:items-center gap-4">
+                    <div className="flex flex-wrap items-center gap-4">
+                        {/* Team Avatars */}
+                        {sprint.team && sprint.team.length > 0 && (
+                            <div className="flex items-center pr-4 border-r border-gray-200 shrink-0">
+                                <div className="flex -space-x-2.5 hover:space-x-0.5 transition-all duration-300">
+                                    {sprint.team.map((member) => {
+                                        const isSelected = selectedMemberFilter === member.name;
+                                        const memberEffort = tasks.filter(t => (t.assignee || '').split(',').map(n => n.trim()).includes(member.name)).reduce((sum, t) => sum + (t.effort || 0), 0);
+                                        const memberUtilization = member.daysWorking ? Math.round((memberEffort / member.daysWorking) * 100) : 0;
+                                        return (
+                                            <div
+                                                key={member.id}
+                                                onClick={() => setSelectedMemberFilter(isSelected ? null : member.name)}
+                                                className={`h-8 w-8 rounded-full ring-2 ring-white flex items-center justify-center font-bold text-xs cursor-pointer transition-all shadow-sm ${isSelected ? 'bg-violet-600 text-white z-10 scale-110 ring-violet-200' : 'bg-gradient-to-br from-violet-100 to-violet-200 text-violet-800 hover:scale-105'
+                                                    } ${selectedMemberFilter && !isSelected ? 'opacity-40 grayscale' : ''}`}
+                                                title={`${member.name} (${memberUtilization}% capacity used) - Click to filter`}
+                                            >
+                                                {getInitials(member.name)}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {selectedMemberFilter && (
+                                    <button
+                                        onClick={() => setSelectedMemberFilter(null)}
+                                        className="ml-3 p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors"
+                                        title="Clear Filter"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
                             </div>
                         )}
 
-                        <div className="flex space-x-2 mt-4 ml-auto">
-
-                            <button
-                                onClick={exportToCSV}
-                                className="flex items-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-2xl shadow-md transition-all text-sm"
-                                title="Download CSV format"
-                            >
-                                <Download className="h-4 w-4" />
-                                <span className="hidden sm:inline">CSV</span>
-                            </button>
-                            <button
-                                onClick={exportToPDF}
-                                className="flex items-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-2xl shadow-md transition-all text-sm"
-                                title="Download PDF format"
-                            >
-                                <Download className="h-4 w-4" />
-                                <span className="hidden sm:inline">PDF</span>
-                            </button>
-                            {canManageTasks && (
-                                <button
-                                    onClick={() => setIsAddModalOpen(true)}
-                                    className="flex items-center space-x-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-2xl shadow-md transition-all text-sm ml-2"
+                        {/* Filters */}
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center space-x-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200 transition-colors hover:bg-white hover:border-gray-300 focus-within:bg-white focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-500/20">
+                                <User className="h-4 w-4 text-violet-500 shrink-0" />
+                                <select
+                                    className="bg-transparent border-none text-sm focus:ring-0 text-gray-700 font-medium outline-none w-32 cursor-pointer"
+                                    value={selectedMemberFilter || ''}
+                                    onChange={(e) => setSelectedMemberFilter(e.target.value || null)}
                                 >
-                                    <Plus className="h-4 w-4" />
-                                    <span className="hidden sm:inline">Add Tasks</span>
-                                </button>
-                            )}
+                                    <option value="">All Assignees</option>
+                                    {devTeam.map(member => (
+                                        <option key={member.id} value={member.name}>{member.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex items-center space-x-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200 transition-colors hover:bg-white hover:border-gray-300 focus-within:bg-white focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-500/20">
+                                <Filter className="h-4 w-4 text-violet-500 shrink-0" />
+                                <select
+                                    className="bg-transparent border-none text-sm focus:ring-0 text-gray-700 font-medium outline-none w-28 cursor-pointer"
+                                    value={selectedTypeFilter || ''}
+                                    onChange={(e) => setSelectedTypeFilter(e.target.value as TicketType || null)}
+                                >
+                                    <option value="">All Types</option>
+                                    <option value="Story">User Story</option>
+                                    <option value="Task">Task</option>
+                                    <option value="Bug">Bug</option>
+                                    <option value="Spike">Spike</option>
+                                </select>
+                            </div>
                         </div>
+                        
+                        {/* View Toggle */}
+                        <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200 ml-auto lg:ml-2 shrink-0">
+                            <button
+                                onClick={() => setViewMode('list')}
+                                className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-violet-700 font-semibold' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'}`}
+                                title="List View"
+                            >
+                                <LayoutList className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => setViewMode('board')}
+                                className={`p-1.5 rounded-lg transition-all ${viewMode === 'board' ? 'bg-white shadow-sm text-violet-700 font-semibold' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'}`}
+                                title="Board View"
+                            >
+                                <LayoutGrid className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+                        <button
+                            onClick={exportToCSV}
+                            className="flex items-center justify-center space-x-2 bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700 px-3 py-2 rounded-xl shadow-sm transition-all text-sm font-medium flex-1 lg:flex-none"
+                            title="Download CSV format"
+                        >
+                            <Download className="h-4 w-4 text-gray-400" />
+                            <span className="hidden sm:inline">CSV</span>
+                        </button>
+                        <button
+                            onClick={exportToPDF}
+                            className="flex items-center justify-center space-x-2 bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700 px-3 py-2 rounded-xl shadow-sm transition-all text-sm font-medium flex-1 lg:flex-none"
+                            title="Download PDF format"
+                        >
+                            <Download className="h-4 w-4 text-gray-400" />
+                            <span className="hidden sm:inline">PDF</span>
+                        </button>
+                        
+                        {canManageTasks && (
+                            <button
+                                onClick={() => { setCreateDefaultType(undefined); setCreateDefaultParent(undefined); setIsCreateOpen(true); }}
+                                className="flex items-center justify-center space-x-2 bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-xl shadow-sm transition-all text-sm font-semibold ml-2 flex-1 lg:flex-none"
+                            >
+                                <Plus className="h-4 w-4" />
+                                <span>Create</span>
+                            </button>
+                        )}
+                        {userRole === 'QA' && (
+                            <button
+                                onClick={() => { setCreateDefaultType('Bug'); setCreateDefaultParent(undefined); setIsCreateOpen(true); }}
+                                className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl shadow-sm transition-all text-sm font-semibold"
+                            >
+                                <BugIcon className="h-4 w-4" />
+                                <span>File Bug</span>
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
 
-            {/* Task List */}
-            <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden min-h-[400px]">
-                {filteredTasks.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-                        <div className="bg-gray-50 p-4 rounded-full mb-3">
-                            {selectedMemberFilter ? <Filter className="w-8 h-8 text-violet-300" /> : <Plus className="w-8 h-8 text-violet-300" />}
+            {/* View Area */}
+            {viewMode === 'board' ? (
+                <div className="bg-transparent min-h-[500px]">
+                    {filteredTasks.length === 0 ? (
+                        <div className="bg-white rounded-2xl shadow-md border border-gray-200 flex flex-col items-center justify-center h-64 text-gray-500 mt-4">
+                            <div className="bg-gray-50 p-4 rounded-full mb-3">
+                                {selectedMemberFilter || selectedTypeFilter ? <Filter className="w-8 h-8 text-violet-300" /> : <LayoutGrid className="w-8 h-8 text-violet-300" />}
+                            </div>
+                            <p className="text-lg font-medium">No tasks found.</p>
+                            <p className="text-sm text-center max-w-sm mt-1">
+                                {(selectedMemberFilter || selectedTypeFilter) ? 'Clear the filters to see more tasks.' : 'Click "+ Create" to add tasks to the board.'}
+                            </p>
+                            {(selectedMemberFilter || selectedTypeFilter) && (
+                                <button
+                                    onClick={() => { setSelectedMemberFilter(null); setSelectedTypeFilter(null); }}
+                                    className="mt-4 px-4 py-2 bg-white border border-gray-300 shadow-sm rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                >
+                                    Clear Filters
+                                </button>
+                            )}
                         </div>
-                        <p className="text-lg font-medium">{selectedMemberFilter ? 'No tasks found for this member.' : 'No tasks assigned.'}</p>
-                        <p className="text-sm text-center max-w-sm mt-1">{selectedMemberFilter ? `Clear the filter or assign new tasks to ${selectedMemberFilter}.` : 'Click "Add Tasks" to plan this sprint.'}</p>
-                        {selectedMemberFilter && (
-                            <button
-                                onClick={() => setSelectedMemberFilter(null)}
-                                className="mt-4 px-4 py-2 bg-white border border-gray-300 shadow-sm rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50"
-                            >
-                                Clear Filter
-                            </button>
-                        )}
-                    </div>
-                ) : (
-                    <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
+                    ) : (
+                        <SprintBoard
+                            tasks={filteredTasks}
+                            allTasks={allTasks}
+                            onEditTask={onEditTask}
+                            onTaskClick={(task) => setEditingTask(task)}
+                        />
+                    )}
+                </div>
+            ) : (
+                <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden min-h-[400px]">
+                    {filteredTasks.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                            <div className="bg-gray-50 p-4 rounded-full mb-3">
+                                {(selectedMemberFilter || selectedTypeFilter) ? <Filter className="w-8 h-8 text-violet-300" /> : <Plus className="w-8 h-8 text-violet-300" />}
+                            </div>
+                            <p className="text-lg font-medium">{(selectedMemberFilter || selectedTypeFilter) ? 'No tasks found.' : 'No tasks assigned.'}</p>
+                            <p className="text-sm text-center max-w-sm mt-1">{(selectedMemberFilter || selectedTypeFilter) ? 'Clear the filters to see more tasks.' : 'Click "+ Create" to add tasks to this sprint.'}</p>
+                            {(selectedMemberFilter || selectedTypeFilter) && (
+                                <button
+                                    onClick={() => { setSelectedMemberFilter(null); setSelectedTypeFilter(null); }}
+                                    className="mt-4 px-4 py-2 bg-white border border-gray-300 shadow-sm rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                >
+                                    Clear Filters
+                                </button>
+                            )}
+                        </div>
+                    ) : (
+                        <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
                             <tr>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase w-16">S.No.</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Task Title</th>
+                                <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Type</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Title</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Assignee</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Schedule</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Effort</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Status</th>
-                                {canManageTasks && (
-                                    <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase">Actions</th>
-                                )}
+                                <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {filteredTasks.map((task, index) => (
+                            {filteredTasks.map((task, index) => {
+                                const parentEpic = task.parentId ? allTasks.find(t => t.id === task.parentId && t.ticketType === 'Epic') : null;
+                                return (
                                 <tr
                                     key={task.id}
                                     className="hover:bg-gray-50 cursor-pointer"
@@ -296,10 +405,22 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                                     <td className="px-6 py-4 text-sm font-medium text-gray-500">
                                         {index + 1}
                                     </td>
+                                    <td className="px-4 py-4">
+                                        <TicketTypeBadge type={task.ticketType || 'Task'} />
+                                    </td>
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col">
                                             <span className="text-sm font-medium text-gray-900">{task.title}</span>
-                                            <span className="text-xs text-gray-400 font-mono">{task.ticketId}</span>
+                                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                                {parentEpic && (
+                                                    <span className="text-[10px] font-bold tracking-wider text-purple-700 bg-purple-100 border border-purple-200 px-1.5 py-0.5 rounded uppercase">
+                                                        {parentEpic.title}
+                                                    </span>
+                                                )}
+                                                {task.storyPoints != null && (
+                                                    <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">{task.storyPoints} pts</span>
+                                                )}
+                                            </div>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
@@ -314,36 +435,44 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                                         {formatHoursToTime(task.effort * 8) || '0h'}
                                     </td>
                                     <td className="px-6 py-4">
-                                        <Badge color={task.status === 'Done' ? 'green' : task.status === 'In Progress' ? 'blue' : 'gray'}>
+                                        <Badge color={task.status === 'Done' ? 'green' : task.status === 'In Progress' ? 'blue' : task.status === 'Code Review' ? 'purple' : task.status === 'QA' ? 'yellow' : 'gray'}>
                                             {task.status}
                                         </Badge>
                                     </td>
-                                    {canManageTasks && (
-                                        <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                                            <button
-                                                onClick={() => setEditingTask(task)}
-                                                className="text-gray-400 hover:text-violet-600 transition-colors"
-                                                title="Edit Task"
-                                            >
-                                                <Pencil className="w-4 h-4" />
-                                            </button>
-                                        </td>
-                                    )}
+                                    <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex items-center justify-end gap-2">
+                                            {canManageTasks && (
+                                                <button
+                                                    onClick={() => setEditingTask(task)}
+                                                    className="text-gray-400 hover:text-violet-600 transition-colors"
+                                                    title="Edit Task"
+                                                >
+                                                    <Pencil className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
                                 </tr>
-                            ))}
+                            )})}
                         </tbody>
                     </table>
                 )}
             </div>
+            )}
 
-            {isAddModalOpen && (
-                <AddTaskModal
-                    sprint={sprint}
-                    backlog={backlog}
-                    onClose={() => setIsAddModalOpen(false)}
-                    onAdd={(task) => {
+            {isCreateOpen && (
+                <CreateTicketModal
+                    allTasks={allTasks}
+                    allSprints={allSprints}
+                    defaultSprintId={sprint.id}
+                    defaultType={createDefaultType}
+                    defaultParentId={createDefaultParent}
+                    userRole={userRole || ''}
+                    devTeam={devTeam}
+                    onClose={() => setIsCreateOpen(false)}
+                    onSave={(task: Task) => {
                         onAddTask(task);
-                        setIsAddModalOpen(false);
+                        setIsCreateOpen(false);
                     }}
                 />
             )}
@@ -366,6 +495,12 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({ sprint, tasks, bac
                     currentUser={currentUser}
                     task={editingTask}
                     sprint={sprint}
+                    childTasks={allTasks.filter(t => t.parentId === editingTask.id)}
+                    onCreateChild={(parentId) => {
+                        setCreateDefaultType(undefined);
+                        setCreateDefaultParent(parentId);
+                        setIsCreateOpen(true);
+                    }}
                     onClose={() => setEditingTask(null)}
                     onSave={(updatedTask) => {
                         onEditTask(updatedTask);

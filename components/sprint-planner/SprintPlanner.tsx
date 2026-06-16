@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { Sprint, Task, Ticket, DevTeamMember } from '../../types';
-import { Plus, Layout, ArrowRight } from 'lucide-react';
+import { Plus, Layout, ArrowRight, Inbox, Layers } from 'lucide-react';
 import { CreateSprintModal } from './CreateSprintModal';
 import { SprintDetails } from './SprintDetails';
+import { CreateTicketModal } from './CreateTicketModal';
+import { EditTaskModal } from './EditTaskModal';
 import { Badge } from '../Badge';
+import { TicketTypeBadge } from '../TicketTypeBadge';
 import { formatDate } from '../../lib/utils';
 
 interface SprintPlannerProps {
@@ -21,9 +24,12 @@ interface SprintPlannerProps {
     userRole?: string;
 }
 
-export const SprintPlanner: React.FC<SprintPlannerProps> = ({ currentUser, sprints, tasks, tickets, devTeam, onCreateSprint, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint, userRole }) => {
+export const SprintPlanner: React.FC<SprintPlannerProps> = ({ currentUser, sprints, tasks, tickets: _tickets, devTeam, onCreateSprint, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint, userRole }) => {
     const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [isCreateTicketOpen, setIsCreateTicketOpen] = useState(false);
+    const [createTicketParentId, setCreateTicketParentId] = useState<string | undefined>(undefined);
+    const [editingTask, setEditingTask] = useState<Task | null>(null);
 
     React.useEffect(() => {
         const handleSelectSprint = (e: Event) => {
@@ -38,11 +44,12 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ currentUser, sprin
     const upcomingSprints = sprints.filter(s => s.status === 'Planned');
     const pastSprints = sprints.filter(s => s.status === 'Completed');
 
-    // Filter ONLY approved tickets that are NOT yet assigned to a sprint task
-    const backlog = tickets.filter(t =>
-        t.pmStatus === 'Approved' &&
-        !tasks.some(task => task.ticketId === t.id)
-    );
+    // Backlog = tasks not yet assigned to any sprint and not Epics
+    const backlogTasks = tasks.filter(t => !t.sprintId && t.ticketType !== 'Epic');
+    // Active Epics
+    const activeEpics = tasks.filter(t => t.ticketType === 'Epic');
+    // Legacy: keep empty array for AddTaskModal's ticket-select mode
+    const backlog: Ticket[] = [];
 
     if (selectedSprintId) {
         const sprint = sprints.find(s => s.id === selectedSprintId);
@@ -52,6 +59,8 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ currentUser, sprin
             <SprintDetails
                 sprint={sprint}
                 tasks={tasks.filter(t => t.sprintId === sprint.id)}
+                allTasks={tasks}
+                allSprints={sprints}
                 backlog={backlog}
                 devTeam={devTeam}
                 onBack={() => setSelectedSprintId(null)}
@@ -71,34 +80,102 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ currentUser, sprin
         );
     }
 
-    const canManageSprints = userRole === 'PM' || userRole === 'PO' || userRole === 'DEV_LEAD';
-    const canViewSprintPlanner = true; // Anyone here can view
+    const canManageSprints = userRole === 'PM' || userRole === 'MANAGEMENT' || userRole === 'DEV_LEAD';
 
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-in fade-in duration-500">
 
             {/* Header */}
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-                        <Layout className="w-6 h-6 mr-3 text-violet-600" />
+                    <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight flex items-center">
+                        <div className="bg-violet-100 text-violet-600 p-2 rounded-xl mr-3 shadow-sm">
+                            <Layout className="w-5 h-5" />
+                        </div>
                         Sprint Planner
                     </h1>
-                    <p className="text-gray-500 mt-1">Manage development cycles and assign tasks.</p>
+                    <p className="text-sm text-gray-500 mt-2 font-medium">Manage development cycles and align your team on key deliverables.</p>
                 </div>
-                {canManageSprints && (
+                <div className="flex flex-wrap items-center gap-3">
+                    {canManageSprints && (
+                        <button
+                            onClick={() => setIsCreateModalOpen(true)}
+                            className="flex items-center space-x-2 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-xl shadow-sm transition-all font-medium text-sm"
+                        >
+                            <Plus className="h-4 w-4 text-gray-400" />
+                            <span>New Sprint</span>
+                        </button>
+                    )}
                     <button
-                        onClick={() => setIsCreateModalOpen(true)}
-                        className="flex items-center space-x-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-2xl shadow-md transition-all"
+                        onClick={() => { setCreateTicketParentId(undefined); setIsCreateTicketOpen(true); }}
+                        className="flex items-center space-x-2 bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-xl shadow-sm transition-all font-semibold text-sm"
                     >
                         <Plus className="h-4 w-4" />
-                        <span>Create New Sprint</span>
+                        <span>Create Ticket</span>
                     </button>
-                )}
+                </div>
             </div>
 
-            {/* A. Current Sprint */}
+            {/* Active Epics */}
+            {activeEpics.length > 0 && (
+                <section>
+                    <h3 className="text-lg font-medium text-gray-900 mb-4 px-1 flex items-center gap-2">
+                        <Layers className="w-5 h-5 text-purple-600" />
+                        Roadmap Epics
+                        <span className="ml-1 text-sm font-normal bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{activeEpics.length}</span>
+                    </h3>
+                    <div className="bg-white rounded-xl shadow-md border border-gray-200 divide-y divide-gray-100">
+                        {activeEpics.map((epic: Task) => (
+                            <div 
+                                key={epic.id} 
+                                className="px-5 py-3 flex items-center gap-4 hover:bg-gray-50 cursor-pointer"
+                                onClick={() => setEditingTask(epic)}
+                            >
+                                <TicketTypeBadge type={epic.ticketType} />
+                                <div className="flex-1">
+                                    <span className="text-sm font-medium text-gray-900 truncate block">{epic.title}</span>
+                                </div>
+                                <span className="text-xs text-gray-400 whitespace-nowrap">{epic.assignee !== 'Unassigned' ? epic.assignee : 'Unassigned'}</span>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {/* A. Backlog */}
+            {backlogTasks.length > 0 && (
+                <section>
+                    <h3 className="text-lg font-medium text-gray-900 mb-4 px-1 flex items-center gap-2">
+                        <Inbox className="w-5 h-5 text-amber-500" />
+                        Backlog
+                        <span className="ml-1 text-sm font-normal bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{backlogTasks.length}</span>
+                    </h3>
+                    <div className="bg-white rounded-xl shadow-md border border-gray-200 divide-y divide-gray-100">
+                        {backlogTasks.slice(0, 10).map((task: import('../../types').Task) => (
+                            <div 
+                                key={task.id} 
+                                className="px-5 py-3 flex items-center gap-4 hover:bg-gray-50 cursor-pointer"
+                                onClick={() => setEditingTask(task)}
+                            >
+                                <TicketTypeBadge type={task.ticketType} />
+                                <span className="flex-1 text-sm font-medium text-gray-900 truncate">{task.title}</span>
+                                {task.storyPoints != null && (
+                                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono">{task.storyPoints} pts</span>
+                                )}
+                                <span className="text-xs text-gray-400">{task.assignee !== 'Unassigned' ? task.assignee : 'Unassigned'}</span>
+                            </div>
+                        ))}
+                        {backlogTasks.length > 10 && (
+                            <div className="px-5 py-2 text-xs text-gray-400 text-center">
+                                +{backlogTasks.length - 10} more items in backlog
+                            </div>
+                        )}
+                    </div>
+                </section>
+            )}
+
+            {/* B. Current Sprint */}
             <section>
                 <h3 className="text-lg font-medium text-gray-900 mb-4 px-1">Current Sprint</h3>
                 {activeSprint ? (
@@ -191,6 +268,50 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ currentUser, sprin
                         onCreateSprint(sprint);
                         setIsCreateModalOpen(false);
                     }}
+                />
+            )}
+
+            {isCreateTicketOpen && (
+                <CreateTicketModal
+                    allTasks={tasks}
+                    allSprints={sprints}
+                    defaultSprintId={undefined}
+                    defaultParentId={createTicketParentId}
+                    defaultType={undefined}
+                    userRole={userRole || ''}
+                    devTeam={devTeam}
+                    onClose={() => {
+                        setIsCreateTicketOpen(false);
+                        setCreateTicketParentId(undefined);
+                    }}
+                    onSave={(task: Task) => {
+                        onAddTask(task);
+                        setIsCreateTicketOpen(false);
+                        setCreateTicketParentId(undefined);
+                    }}
+                />
+            )}
+
+            {editingTask && (
+                <EditTaskModal
+                    currentUser={currentUser}
+                    task={editingTask}
+                    sprint={{ id: '', name: 'Backlog', goal: '', status: 'Planned', startDate: '', endDate: '', capacity: 0, team: devTeam } as any}
+                    childTasks={tasks.filter(t => t.parentId === editingTask.id)}
+                    onCreateChild={(parentId) => {
+                        setCreateTicketParentId(parentId);
+                        setIsCreateTicketOpen(true);
+                    }}
+                    onClose={() => setEditingTask(null)}
+                    onSave={(updatedTask) => {
+                        onEditTask(updatedTask);
+                        setEditingTask(updatedTask);
+                    }}
+                    onDelete={(taskId) => {
+                        onDeleteTask(taskId);
+                        setEditingTask(null);
+                    }}
+                    userRole={userRole}
                 />
             )}
         </div>

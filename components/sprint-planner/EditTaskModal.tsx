@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Clock, User as UserIcon } from 'lucide-react';
+import { X, Clock, User as UserIcon, Link, AlertTriangle, Plus } from 'lucide-react';
 import { Task, Sprint, TaskLog } from '../../types';
 import { supabase } from '../../supabaseClient';
 import { formatDate, parseTimeToHours, formatHoursToTime } from '../../lib/utils';
 import { Badge } from '../Badge';
+import { TicketTypeBadge } from '../TicketTypeBadge';
 
 interface EditTaskModalProps {
     currentUser?: any;
@@ -13,10 +14,13 @@ interface EditTaskModalProps {
     onSave: (updatedTask: Task) => void;
     onDelete: (taskId: string) => void;
     userRole?: string;
+    childTasks?: Task[];
+    onCreateChild?: (parentId: string) => void;
 }
 
-export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task, sprint, onClose, onSave, onDelete, userRole }) => {
-    const isReadOnly = userRole === 'PO';
+export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task, sprint, onClose, onSave, onDelete, userRole, childTasks, onCreateChild }) => {
+    const isReadOnly = userRole === 'MANAGEMENT' || userRole === 'BA';
+    const isQA = userRole === 'QA';
     // Time tracking
     const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
     const [timeSpentInput, setTimeSpentInput] = useState('');
@@ -230,7 +234,7 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
         }
 
         const assigneesStr = newAssignees.join(', ');
-        const newEffort = calculateEffort(task.startDate, task.endDate, newAssignees, task.estimatedTime || '');
+        const newEffort = calculateEffort(task.startDate, task.dueDate, newAssignees, task.estimatedTime || '');
 
         updateTaskFields({
             assignee: assigneesStr,
@@ -249,7 +253,10 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                     <div className="bg-white px-6 pt-6 pb-6 w-full">
                         <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
                             <div className="flex items-center space-x-6">
-                                <h3 className="text-xl font-bold text-gray-900">Task details</h3>
+                                <div className="flex items-center gap-3">
+                                    <TicketTypeBadge type={task.ticketType || 'Task'} size="md" />
+                                    <h3 className="text-xl font-bold text-gray-900">Details</h3>
+                                </div>
                                 <div className="flex space-x-2 bg-gray-100 p-1 rounded-lg">
                                     <button
                                         onClick={() => setActiveTab('details')}
@@ -270,6 +277,7 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
 
                         <div className="space-y-4">
                             {activeTab === 'details' && (
+                                <>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     {/* Left Column: Task Details */}
                                     <div className="space-y-5">
@@ -374,6 +382,37 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                 </div>
                                             )}
                                         </div>
+
+                                        <div className="grid grid-cols-2 gap-4 mt-4">
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">Code Reviewer</label>
+                                                <select
+                                                    disabled={isReadOnly}
+                                                    value={task.codeReviewer || ''}
+                                                    onChange={(e) => updateTaskField('codeReviewer', e.target.value)}
+                                                    className={`block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-600' : 'bg-white'}`}
+                                                >
+                                                    <option value="">Unassigned</option>
+                                                    {sprint.team?.map(m => (
+                                                        <option key={m.id} value={m.name}>{m.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">QA Tester</label>
+                                                <select
+                                                    disabled={isReadOnly}
+                                                    value={task.qaTester || ''}
+                                                    onChange={(e) => updateTaskField('qaTester', e.target.value)}
+                                                    className={`block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-600' : 'bg-white'}`}
+                                                >
+                                                    <option value="">Unassigned</option>
+                                                    {sprint.team?.map(m => (
+                                                        <option key={m.id} value={m.name}>{m.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
                                     </div>
 
                                     {/* Right Column: Schedule and Tracking */}
@@ -390,25 +429,25 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                     value={task.startDate}
                                                     onChange={(e) => {
                                                         const val = e.target.value;
-                                                        const newEffort = calculateEffort(val, task.endDate, assignees, task.estimatedTime || '');
+                                                        const newEffort = calculateEffort(val, task.dueDate, assignees, task.estimatedTime || '');
                                                         updateTaskFields({ startDate: val, effort: newEffort });
                                                     }}
                                                     className={`block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-semibold text-gray-700 mb-1">End Date</label>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">Due Date</label>
                                                 <input
                                                     type="date"
                                                     required
                                                     disabled={isReadOnly}
                                                     min={sprint.startDate}
                                                     max={sprint.endDate}
-                                                    value={task.endDate}
+                                                    value={task.dueDate}
                                                     onChange={(e) => {
                                                         const val = e.target.value;
                                                         const newEffort = calculateEffort(task.startDate, val, assignees, task.estimatedTime || '');
-                                                        updateTaskFields({ endDate: val, effort: newEffort });
+                                                        updateTaskFields({ dueDate: val, effort: newEffort });
                                                     }}
                                                     className={`block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
                                                 />
@@ -426,9 +465,29 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                 >
                                                     <option value="To Do">To Do</option>
                                                     <option value="In Progress">In Progress</option>
+                                                    <option value="Code Review">Code Review</option>
+                                                    <option value="QA">QA</option>
                                                     <option value="Done">Done</option>
                                                 </select>
                                             </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">Priority</label>
+                                                <select
+                                                    disabled={isReadOnly}
+                                                    value={task.priority || 'Medium'}
+                                                    onChange={(e) => updateTaskField('priority', e.target.value as Task['priority'])}
+                                                    className={`block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-600' : 'bg-white'}`}
+                                                >
+                                                    <option value="Highest">Highest</option>
+                                                    <option value="High">High</option>
+                                                    <option value="Medium">Medium</option>
+                                                    <option value="Low">Low</option>
+                                                    <option value="Lowest">Lowest</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 gap-4">
                                             <div>
                                                 <label className="block text-sm font-semibold text-gray-700 mb-1 flex justify-between">
                                                     <span>Estimated Time</span>
@@ -441,7 +500,7 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                     value={task.estimatedTime || ''}
                                                     onChange={(e) => {
                                                         const val = e.target.value;
-                                                        const newEffort = calculateEffort(task.startDate, task.endDate, assignees, val);
+                                                        const newEffort = calculateEffort(task.startDate, task.dueDate, assignees, val);
                                                         updateTaskFields({ estimatedTime: val, effort: newEffort });
                                                     }}
                                                     placeholder="e.g. 1d 4h"
@@ -480,8 +539,281 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                         </div>
                                     </div>
                                 </div>
-                            )}
 
+                                {/* Type-specific fields */}
+                                {(task.ticketType === 'Story' || task.ticketType === 'Bug' || task.ticketType === 'Epic' || task.ticketType === 'Spike') && (
+                                    <div className="mt-6 border-t border-gray-100 pt-6 space-y-4">
+                                        <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide">
+                                            {task.ticketType} Details
+                                        </h4>
+
+                                        {/* Shared: spec + figma links */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-1"><Link className="w-3 h-3" /> Spec / Doc Link</label>
+                                                <input
+                                                    type="url"
+                                                    disabled={isReadOnly}
+                                                    value={task.specLink || ''}
+                                                    onChange={(e) => updateTaskField('specLink', e.target.value)}
+                                                    placeholder="https://notion.so/..."
+                                                    className={`block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-1"><Link className="w-3 h-3" /> Figma Link</label>
+                                                <input
+                                                    type="url"
+                                                    disabled={isReadOnly}
+                                                    value={task.figmaLink || ''}
+                                                    onChange={(e) => updateTaskField('figmaLink', e.target.value)}
+                                                    placeholder="https://figma.com/..."
+                                                    className={`block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Story: Subtasks */}
+                                        {task.ticketType === 'Story' && (
+                                            <div className="space-y-6">
+                                                <div>
+                                                    <div className="flex justify-between items-center mb-3">
+                                                        <h4 className="text-sm font-semibold text-gray-700 tracking-wide">Subtasks</h4>
+                                                        {onCreateChild && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => onCreateChild(task.id)}
+                                                                className="text-xs bg-violet-100 hover:bg-violet-200 text-violet-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center"
+                                                            >
+                                                                <Plus className="w-3 h-3 mr-1" /> Add Subtask
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {childTasks && childTasks.length > 0 ? (
+                                                        <div className="bg-gray-50 border border-gray-200 rounded-xl divide-y divide-gray-200">
+                                                            {childTasks.map(child => (
+                                                                <div key={child.id} className="p-3 flex items-center justify-between hover:bg-gray-100 transition-colors">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <TicketTypeBadge type={child.ticketType || 'Task'} />
+                                                                        <span className="text-sm font-medium text-gray-900">{child.title}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <Badge color={child.status === 'Done' ? 'green' : child.status === 'In Progress' ? 'blue' : child.status === 'Code Review' ? 'purple' : child.status === 'QA' ? 'yellow' : 'gray'}>
+                                                                            {child.status}
+                                                                        </Badge>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-sm text-gray-500 italic bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-300 flex flex-col items-center justify-center">
+                                                            <p className="mb-3">No subtasks yet. Break down this story into smaller tasks.</p>
+                                                            {onCreateChild && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => onCreateChild(task.id)}
+                                                                    className="text-xs bg-violet-100 hover:bg-violet-200 text-violet-700 px-3 py-1.5 rounded-lg font-medium transition-colors inline-flex items-center"
+                                                                >
+                                                                    <Plus className="w-3 h-3 mr-1" /> Add Subtask
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Bug: environment + steps + qa status */}
+                                        {task.ticketType === 'Bug' && (
+                                            <div className="space-y-3">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3 text-red-500" /> Environment</label>
+                                                        <select
+                                                            disabled={!isQA && isReadOnly}
+                                                            value={task.bugEnvironment || ''}
+                                                            onChange={(e) => updateTaskField('bugEnvironment', e.target.value as Task['bugEnvironment'])}
+                                                            className={`block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${(!isQA && isReadOnly) ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+                                                        >
+                                                            <option value="">Select...</option>
+                                                            <option value="Production">Production</option>
+                                                            <option value="Staging">Staging</option>
+                                                            <option value="Dev">Dev</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-semibold text-gray-700 mb-1">QA Status</label>
+                                                        <select
+                                                            disabled={!isQA && !['PM', 'DEV_LEAD', 'DEV'].includes(userRole || '')}
+                                                            value={task.qaStatus || 'Open'}
+                                                            onChange={(e) => updateTaskField('qaStatus', e.target.value as Task['qaStatus'])}
+                                                            className={`block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 bg-white`}
+                                                        >
+                                                            <option value="Open">Open</option>
+                                                            <option value="In Progress">In Progress</option>
+                                                            <option value="Fixed">Fixed</option>
+                                                            <option value="Verified">Verified</option>
+                                                            <option value="Closed">Closed</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Steps to Reproduce</label>
+                                                    <textarea
+                                                        disabled={!isQA && isReadOnly}
+                                                        value={task.bugSteps || ''}
+                                                        onChange={(e) => updateTaskField('bugSteps', e.target.value)}
+                                                        rows={3}
+                                                        placeholder="1. Go to... 2. Click... 3. See error"
+                                                        className={`block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${(!isQA && isReadOnly) ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                                    />
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Expected Behaviour</label>
+                                                        <textarea
+                                                            disabled={!isQA && isReadOnly}
+                                                            value={task.bugExpected || ''}
+                                                            onChange={(e) => updateTaskField('bugExpected', e.target.value)}
+                                                            rows={2}
+                                                            className={`block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${(!isQA && isReadOnly) ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Actual Behaviour</label>
+                                                        <textarea
+                                                            disabled={!isQA && isReadOnly}
+                                                            value={task.bugActual || ''}
+                                                            onChange={(e) => updateTaskField('bugActual', e.target.value)}
+                                                            rows={2}
+                                                            className={`block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${(!isQA && isReadOnly) ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Epic: target release + business goal + child tickets */}
+                                        {task.ticketType === 'Epic' && (
+                                            <div className="space-y-6">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Target Release Date</label>
+                                                        <input
+                                                            type="date"
+                                                            disabled={isReadOnly}
+                                                            value={task.targetReleaseDate || ''}
+                                                            onChange={(e) => updateTaskField('targetReleaseDate', e.target.value)}
+                                                            className={`block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Business Goal</label>
+                                                        <input
+                                                            type="text"
+                                                            disabled={isReadOnly}
+                                                            value={task.businessGoal || ''}
+                                                            onChange={(e) => updateTaskField('businessGoal', e.target.value)}
+                                                            placeholder="What outcome does this Epic achieve?"
+                                                            className={`block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Child Tickets Section */}
+                                                <div>
+                                                    <div className="flex justify-between items-center mb-3">
+                                                        <h4 className="text-sm font-semibold text-gray-700 tracking-wide">Child Tickets</h4>
+                                                        {onCreateChild && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => onCreateChild(task.id)}
+                                                                className="text-xs bg-violet-100 hover:bg-violet-200 text-violet-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center"
+                                                            >
+                                                                <Plus className="w-3 h-3 mr-1" /> Add Child Ticket
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {childTasks && childTasks.length > 0 ? (
+                                                        <div className="bg-gray-50 border border-gray-200 rounded-xl divide-y divide-gray-200">
+                                                            {childTasks.map(child => (
+                                                                <div key={child.id} className="p-3 flex items-center justify-between hover:bg-gray-100 transition-colors">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <TicketTypeBadge type={child.ticketType || 'Task'} />
+                                                                        <span className="text-sm font-medium text-gray-900">{child.title}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <Badge color={child.status === 'Done' ? 'green' : child.status === 'In Progress' ? 'blue' : child.status === 'Code Review' ? 'purple' : child.status === 'QA' ? 'yellow' : 'gray'}>
+                                                                            {child.status}
+                                                                        </Badge>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-sm text-gray-500 italic bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-300 flex flex-col items-center justify-center">
+                                                            <p className="mb-3">No child tickets yet. Create one to break down this Epic.</p>
+                                                            {onCreateChild && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => onCreateChild(task.id)}
+                                                                    className="text-xs bg-violet-100 hover:bg-violet-200 text-violet-700 px-3 py-1.5 rounded-lg font-medium transition-colors inline-flex items-center"
+                                                                >
+                                                                    <Plus className="w-3 h-3 mr-1" /> Add Child Ticket
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Spike: timebox + research question + outcome */}
+                                        {task.ticketType === 'Spike' && (
+                                            <div className="space-y-3">
+                                                <div>
+                                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Research Question</label>
+                                                    <input
+                                                        type="text"
+                                                        disabled={isReadOnly}
+                                                        value={task.researchQuestion || ''}
+                                                        onChange={(e) => updateTaskField('researchQuestion', e.target.value)}
+                                                        placeholder="What are we trying to learn?"
+                                                        className={`block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                                                    />
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Timebox (days)</label>
+                                                        <input
+                                                            type="number"
+                                                            min={1}
+                                                            disabled={isReadOnly}
+                                                            value={task.timeboxDays ?? ''}
+                                                            onChange={(e) => updateTaskField('timeboxDays', e.target.value ? parseInt(e.target.value) : undefined)}
+                                                            className={`block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Outcome</label>
+                                                        <input
+                                                            type="text"
+                                                            disabled={isReadOnly}
+                                                            value={task.outcome || ''}
+                                                            onChange={(e) => updateTaskField('outcome', e.target.value)}
+                                                            placeholder="What did we learn?"
+                                                            className={`block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                </>
+                            )}
                             {activeTab === 'history' && (
                                 <div className="min-h-[300px] border border-gray-100 rounded-xl bg-gray-50/50 p-6">
                                     {isLoadingLogs ? (

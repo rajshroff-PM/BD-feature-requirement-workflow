@@ -20,7 +20,10 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
     // Task Form State
     const [assignees, setAssignees] = useState<string[]>(sprint.team && sprint.team.length > 0 ? [sprint.team[0].name] : []);
     const [startDate, setStartDate] = useState(sprint.startDate);
-    const [endDate, setEndDate] = useState(sprint.startDate); // Default to start
+    const [dueDate, setDueDate] = useState(sprint.startDate); // Default to start
+    const [codeReviewer, setCodeReviewer] = useState<string>('');
+    const [qaTester, setQaTester] = useState<string>('');
+    const [priority, setPriority] = useState<Task['priority']>('Medium');
     const [error, setError] = useState('');
 
     // Calculate effort based on dates and assignees
@@ -47,12 +50,12 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
         }
 
         // Date Validation
-        if (new Date(startDate) < new Date(sprint.startDate) || new Date(endDate) > new Date(sprint.endDate)) {
+        if (new Date(startDate) < new Date(sprint.startDate) || new Date(dueDate) > new Date(sprint.endDate)) {
             setError('Task dates must be within the sprint timeline.');
             return;
         }
-        if (new Date(endDate) < new Date(startDate)) {
-            setError('End date cannot be before start date.');
+        if (new Date(dueDate) < new Date(startDate)) {
+            setError('Due date cannot be before start date.');
             return;
         }
         if (assignees.length === 0) {
@@ -64,12 +67,16 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
             id: `TASK-${Date.now()}`,
             sprintId: sprint.id,
             ticketId: mode === 'select' ? selectedTicket!.id : undefined,
+            ticketType: 'Task',
             title: mode === 'select' ? selectedTicket!.title : manualTitle,
             description: mode === 'manual' ? manualDescription : undefined,
             assignee: assignees.join(', '),
+            codeReviewer: codeReviewer || undefined,
+            qaTester: qaTester || undefined,
+            priority,
             startDate,
-            endDate,
-            effort: calculateEffort(startDate, endDate, assignees, estimatedTime),
+            dueDate,
+            effort: calculateEffort(startDate, dueDate, assignees, estimatedTime),
             estimatedTime,
             status: 'To Do'
         };
@@ -198,6 +205,50 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
 
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
+                                                <label className="block text-sm font-medium text-gray-700">Code Reviewer</label>
+                                                <select
+                                                    value={codeReviewer}
+                                                    onChange={(e) => setCodeReviewer(e.target.value)}
+                                                    className="mt-1 block w-full border border-gray-300 rounded-xl shadow-sm p-2 focus:ring-violet-500 focus:border-violet-500"
+                                                >
+                                                    <option value="">Unassigned</option>
+                                                    {sprint.team?.map(m => (
+                                                        <option key={m.id} value={m.name}>{m.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">QA Tester</label>
+                                                <select
+                                                    value={qaTester}
+                                                    onChange={(e) => setQaTester(e.target.value)}
+                                                    className="mt-1 block w-full border border-gray-300 rounded-xl shadow-sm p-2 focus:ring-violet-500 focus:border-violet-500"
+                                                >
+                                                    <option value="">Unassigned</option>
+                                                    {sprint.team?.map(m => (
+                                                        <option key={m.id} value={m.name}>{m.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Priority</label>
+                                            <select
+                                                value={priority}
+                                                onChange={(e) => setPriority(e.target.value as Task['priority'])}
+                                                className="mt-1 block w-full border border-gray-300 rounded-xl shadow-sm p-2 focus:ring-violet-500 focus:border-violet-500"
+                                            >
+                                                <option value="Highest">Highest</option>
+                                                <option value="High">High</option>
+                                                <option value="Medium">Medium</option>
+                                                <option value="Low">Low</option>
+                                                <option value="Lowest">Lowest</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
                                                 <label className="block text-sm font-medium text-gray-700">Start Date</label>
                                                 <input
                                                     type="date"
@@ -209,13 +260,13 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700">End Date</label>
+                                                <label className="block text-sm font-medium text-gray-700">Due Date</label>
                                                 <input
                                                     type="date"
-                                                    value={endDate}
+                                                    value={dueDate}
                                                     min={sprint.startDate}
                                                     max={sprint.endDate}
-                                                    onChange={(e) => setEndDate(e.target.value)}
+                                                    onChange={(e) => setDueDate(e.target.value)}
                                                     className="mt-1 block w-full border border-gray-300 rounded-xl shadow-md p-2 focus:ring-violet-500 focus:border-violet-500"
                                                 />
                                             </div>
@@ -236,7 +287,7 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ sprint, backlog, onC
                                         <div className="bg-blue-50 p-3 rounded-xl flex items-center">
                                             <Calendar className="w-4 h-4 text-blue-500 mr-2" />
                                             <span className="text-sm text-blue-700 font-medium">
-                                                Estimated Effort: {calculateEffort(startDate, endDate, assignees, estimatedTime)} Day(s)
+                                                Estimated Effort: {calculateEffort(startDate, dueDate, assignees, estimatedTime)} Day(s)
                                             </span>
                                         </div>
 
