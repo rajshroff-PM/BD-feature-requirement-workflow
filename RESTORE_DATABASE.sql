@@ -1,4 +1,4 @@
-﻿-- Enable UUID extension
+-- Enable UUID extension
 create extension if not exists "uuid-ossp";
 
 -- 1. PROFILES TABLE (Extends Auth)
@@ -11,13 +11,6 @@ create table profiles (
   updated_at timestamp with time zone
 );
 
--- 1.5. DEV TEAM TABLE
-create table dev_team (
-  id uuid default uuid_generate_v4() primary key,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  name text not null,
-  role text
-);
 
 -- 2. TICKETS TABLE 
 create table tickets (
@@ -65,12 +58,12 @@ alter table tickets enable row level security;
 -- 4. POLICIES (Simple for now, can be refined later)
 -- Allow read access to everyone for now (authenticated)
 create policy "Public profiles are viewable by everyone" on profiles for select using ( true );
-create policy "Public dev_team viewable by everyone" on dev_team for select using ( true );
+
 create policy "Tickets are viewable by everyone" on tickets for select using ( true );
 
 -- Insert access
 create policy "Users can insert their own profile" on profiles for insert with check ( auth.uid() = id );
-create policy "Authenticated users can insert dev_team" on dev_team for all using ( auth.role() = 'authenticated' );
+
 create policy "Authenticated users can insert tickets" on tickets for insert with check ( auth.role() = 'authenticated' );
 
 -- Update access (simplified for prototype)
@@ -114,6 +107,9 @@ create table tasks (
   ticket_id text, -- references tickets(id) if needed, using text for now to match interface
   title text not null,
   assignee text,
+  assignees uuid[] default '{}',
+  code_reviewer_id uuid references profiles(id) on delete set null,
+  qa_tester_id uuid references profiles(id) on delete set null,
   start_date date,
   end_date date,
   effort numeric,
@@ -142,22 +138,6 @@ ALTER TABLE tickets ADD COLUMN IF NOT EXISTS design_reference_link text;
 ALTER TABLE tasks 
 ADD COLUMN IF NOT EXISTS estimated_time text,
 ADD COLUMN IF NOT EXISTS logged_time text;
--- Create dev_team table
-CREATE TABLE IF NOT EXISTS dev_team (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
-  name text NOT NULL,
-  role text
-);
-
--- Add team_members JSONB column to sprints table
-ALTER TABLE sprints ADD COLUMN IF NOT EXISTS team_members jsonb;
-
--- Enable RLS for dev_team
-ALTER TABLE dev_team ENABLE ROW LEVEL SECURITY;
-
--- Add Dev Team policies
-
 
 -- Add Product Owner columns to the tickets table
 ALTER TABLE public.tickets 
@@ -325,3 +305,25 @@ USING (auth.role() = 'authenticated');
 CREATE POLICY "task_logs insertable by authenticated users" 
 ON task_logs FOR INSERT 
 WITH CHECK (auth.role() = 'authenticated');
+
+-- -----------------------------------------------------------------------------
+-- 23. delete_user_admin RPC function
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION delete_user_admin(target_user_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    -- Verify the caller has PM or SUPER_ADMIN role
+    IF NOT EXISTS (
+        SELECT 1 FROM profiles 
+        WHERE id = auth.uid() 
+        AND role IN ('PM', 'SUPER_ADMIN')
+    ) THEN
+        RAISE EXCEPTION 'Unauthorized: Only PM and SUPER_ADMIN can delete users.';
+    END IF;
+
+    DELETE FROM auth.users WHERE id = target_user_id;
+END;
+$$;

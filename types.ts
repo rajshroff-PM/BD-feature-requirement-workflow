@@ -31,6 +31,16 @@ export interface User {
   name?: string;
 }
 
+export interface Profile {
+  id: string;
+  email?: string;
+  full_name?: string;
+  role: Role;
+  avatar_url?: string;
+  updated_at?: string;
+}
+
+
 // ── Tickets (legacy triage — kept for backward compat, no longer primary UI) ──
 
 export interface Ticket {
@@ -70,10 +80,12 @@ export interface DevTeamMember {
   role: string;
 }
 
-export interface SprintTeamMember extends DevTeamMember {
+export interface SprintTeamMember {
+  profileId: string;
   daysWorking: number;
   presentDates?: string[];
 }
+
 
 // ── Sprints ───────────────────────────────────────────────────────────────────
 
@@ -98,9 +110,12 @@ export interface Task {
   parentId?: string;       // Story → Epic; Bug/Task → Story or Epic
   title: string;
   description?: string;
-  assignee: string;
-  codeReviewer?: string;
-  qaTester?: string;
+  assignee?: string; // DEPRECATED: use assignees
+  assignees?: string[]; // Array of Profile UUIDs
+  codeReviewer?: string; // DEPRECATED: use codeReviewerId
+  codeReviewerId?: string; // Profile UUID
+  qaTester?: string; // DEPRECATED: use qaTesterId
+  qaTesterId?: string; // Profile UUID
   priority?: 'Highest' | 'High' | 'Medium' | 'Low' | 'Lowest';
   startDate: string;
   dueDate: string;
@@ -121,6 +136,9 @@ export interface Task {
   bugActual?: string;
   bugScreenshotUrl?: string;
   qaStatus?: 'Open' | 'In Progress' | 'Fixed' | 'Verified' | 'Closed';
+  bugPlatform?: string[];
+  bugDevices?: string[];
+  bugOsVersions?: string[];
 
   // Epic-specific
   targetReleaseDate?: string;

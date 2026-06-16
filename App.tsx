@@ -14,7 +14,7 @@ import { Badge } from './components/Badge';
 import { formatDate, getInitials } from './lib/utils';
 import { LoginScreen } from './components/LoginScreen';
 import { RoleSelectionScreen } from './components/RoleSelectionScreen';
-import { Ticket, BadgeColor, User as UserType, Sprint, Task, DevTeamMember, Product, Feature } from './types';
+import { Ticket, BadgeColor, User as UserType, Sprint, Task, Product, Feature, Profile } from './types';
 import { SprintPlanner } from './components/sprint-planner/SprintPlanner';
 import { ProductsPage } from './components/products/ProductsPage';
 import { ManageDevTeam } from './components/ManageDevTeam';
@@ -74,7 +74,7 @@ export default function FeatureTriageApp() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [features, setFeatures] = useState<Feature[]>([]);
-  const [devTeam, setDevTeam] = useState<DevTeamMember[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
   // Auth & Profile Handling
@@ -127,7 +127,7 @@ export default function FeatureTriageApp() {
         fetchTasks();
         fetchProducts();
         fetchFeatures();
-        fetchDevTeam();
+        fetchProfiles();
       } else {
         setNeedsRoleSelection(true);
       }
@@ -293,6 +293,9 @@ export default function FeatureTriageApp() {
         bugActual: t.bug_actual,
         bugScreenshotUrl: t.bug_screenshot_url,
         qaStatus: t.qa_status,
+        bugPlatform: t.bug_platforms || [],
+        bugDevices: t.bug_devices || [],
+        bugOsVersions: t.bug_os_versions || [],
         // Epic-specific
         targetReleaseDate: t.target_release_date,
         businessGoal: t.business_goal,
@@ -307,13 +310,13 @@ export default function FeatureTriageApp() {
     }
   };
 
-  const fetchDevTeam = async () => {
+  const fetchProfiles = async () => {
     try {
-      const { data, error } = await supabase.from('dev_team').select('*').order('name', { ascending: true });
+      const { data, error } = await supabase.from('profiles').select('*').in('role', ['DEV', 'DEV_LEAD', 'QA']).order('full_name', { ascending: true });
       if (error) throw error;
-      setDevTeam(data || []);
+      setProfiles(data || []);
     } catch (err) {
-      console.error('Error fetching dev team:', err);
+      console.error('Error fetching profiles:', err);
     }
   };
 
@@ -403,6 +406,9 @@ export default function FeatureTriageApp() {
         bug_actual: newTask.bugActual || null,
         bug_screenshot_url: newTask.bugScreenshotUrl || null,
         qa_status: newTask.qaStatus || 'Open',
+        bug_platforms: newTask.bugPlatform || [],
+        bug_devices: newTask.bugDevices || [],
+        bug_os_versions: newTask.bugOsVersions || [],
         target_release_date: newTask.targetReleaseDate || null,
         business_goal: newTask.businessGoal || null,
         timebox_days: newTask.timeboxDays || null,
@@ -448,6 +454,9 @@ export default function FeatureTriageApp() {
         bug_actual: updatedTask.bugActual || null,
         bug_screenshot_url: updatedTask.bugScreenshotUrl || null,
         qa_status: updatedTask.qaStatus || null,
+        bug_platforms: updatedTask.bugPlatform || [],
+        bug_devices: updatedTask.bugDevices || [],
+        bug_os_versions: updatedTask.bugOsVersions || [],
         target_release_date: updatedTask.targetReleaseDate || null,
         business_goal: updatedTask.businessGoal || null,
         timebox_days: updatedTask.timeboxDays || null,
@@ -634,13 +643,18 @@ export default function FeatureTriageApp() {
       (s.goal && s.goal.toLowerCase().includes(term))
     );
 
-    const matchedTasks = tasks.filter(t =>
-      t.title.toLowerCase().includes(term) ||
-      (t.assignee && t.assignee.toLowerCase().includes(term))
-    );
+    const matchedTasks = tasks.filter(t => {
+      const titleMatch = t.title.toLowerCase().includes(term);
+      const assigneeMatch = (t.assignees || []).some(id => {
+          const profile = profiles.find(p => p.id === id);
+          const name = profile ? (profile.full_name || profile.email || '').toLowerCase() : '';
+          return name.includes(term);
+      });
+      return titleMatch || assigneeMatch;
+    });
 
-    const matchedTeam = devTeam.filter(m =>
-      m.name.toLowerCase().includes(term) ||
+    const matchedTeam = profiles.filter(m =>
+      (m.full_name && m.full_name.toLowerCase().includes(term)) ||
       (m.role && m.role.toLowerCase().includes(term))
     );
 
@@ -650,7 +664,7 @@ export default function FeatureTriageApp() {
       tasks: matchedTasks,
       team: matchedTeam
     };
-  }, [searchTerm, tickets, sprints, tasks, devTeam]);
+  }, [searchTerm, tickets, sprints, tasks, profiles]);
 
   const hasSearchResults = searchResults.tickets.length > 0 ||
     searchResults.sprints.length > 0 ||
@@ -830,7 +844,11 @@ export default function FeatureTriageApp() {
                                   setIsSearchFocused(false);
                                 }}
                               >
-                                <div className="text-xs text-gray-400 truncate">{task.assignee || 'Unassigned'}</div>
+                                <div className="text-xs text-gray-400 truncate">
+                                    {(task.assignees || []).length > 0
+                                        ? (task.assignees || []).map(id => profiles.find(p => p.id === id)?.full_name || profiles.find(p => p.id === id)?.email || 'Unknown').join(', ')
+                                        : 'Unassigned'}
+                                </div>
                                 <div className="text-sm font-medium text-gray-900 truncate">{task.title}</div>
                               </button>
                             ))}
@@ -850,7 +868,7 @@ export default function FeatureTriageApp() {
                                   setIsSearchFocused(false);
                                 }}
                               >
-                                <div className="text-sm font-medium text-gray-900 truncate">{member.name}</div>
+                                <div className="text-sm font-medium text-gray-900 truncate">{member.full_name || member.email}</div>
                                 <div className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{member.role}</div>
                               </button>
                             ))}
@@ -941,7 +959,7 @@ export default function FeatureTriageApp() {
           sprints={sprints}
           tasks={tasks}
           tickets={tickets}
-          devTeam={devTeam}
+          profiles={profiles}
           onCreateSprint={handleCreateSprint}
           onAddTask={handleAddTask}
           onEditSprint={handleEditSprint}
@@ -954,6 +972,7 @@ export default function FeatureTriageApp() {
         <CapacityTracker
           sprints={sprints}
           tasks={tasks}
+          profiles={profiles}
           onEditSprint={handleEditSprint}
         />
       ) : currentView === 'products' ? (
@@ -969,10 +988,10 @@ export default function FeatureTriageApp() {
         />
       ) : currentView === 'team' ? (
         <ManageDevTeam
-          onClose={() => fetchDevTeam()}
+          onClose={() => fetchProfiles()}
         />
       ) : currentView === 'admin' && ['SUPER_ADMIN', 'PM', 'MANAGEMENT'].includes(user?.role || '') ? (
-        <AdminDashboard />
+        <AdminDashboard currentUser={user} />
       ) : currentView === 'analytics' ? (
         <Analytics sprints={sprints} tasks={tasks} />
       ) : null

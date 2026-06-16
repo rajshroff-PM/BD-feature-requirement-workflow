@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { X, Layers, BookOpen, Bug as BugIcon, CheckSquare, Zap } from 'lucide-react';
 import { Task, TicketType, Sprint, TICKET_TYPE_CONFIG, DevTeamMember } from '../../types';
+import { MultiSelectDropdown } from '../MultiSelectDropdown';
+
+const PLATFORM_OPTIONS = ['Android', 'iOS', 'Web', 'Backend'];
+const DEVICE_OPTIONS = ['Oppo A38', 'Samsung A32', 'Samsung S10 Lite', 'Pixel 9A', 'iPhone 15', 'iPhone 14', 'iPad Pro', 'Other'];
+const OS_OPTIONS = ['Android 12', 'Android 13', 'Android 14', 'Android 15', 'iOS 17', 'iOS 18', 'iOS 26', 'Other'];
 
 interface CreateTicketModalProps {
   allTasks: Task[];
@@ -8,7 +13,7 @@ interface CreateTicketModalProps {
   defaultSprintId?: string;
   defaultParentId?: string;      // Pre-fill parent (e.g. "File Bug" from a Story card)
   defaultType?: TicketType;      // Skip type picker (e.g. QA always gets Bug)
-  devTeam: DevTeamMember[];
+  profiles: import('../../types').Profile[];
   userRole?: string;
   onSave: (task: Task) => void;
   onClose: () => void;
@@ -46,7 +51,7 @@ const ID_PREFIX: Record<TicketType, string> = {
 
 export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   allTasks, allSprints, defaultSprintId, defaultParentId, defaultType,
-  devTeam, userRole, onSave, onClose,
+  profiles, userRole, onSave, onClose,
 }) => {
   const allowedTypesBase = ALLOWED_TYPES[userRole || ''] || [];
   const parentTask = defaultParentId ? allTasks.find(t => t.id === defaultParentId) : null;
@@ -78,6 +83,9 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     timeboxDays: '',
     researchQuestion: '',
     bugEnvironment: '' as '' | 'Production' | 'Staging' | 'Dev',
+    bugPlatform: [] as string[],
+    bugDevices: [] as string[],
+    bugOsVersions: [] as string[],
     bugSteps: '',
     bugExpected: '',
     bugActual: '',
@@ -112,7 +120,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
       ticketType:  selectedType,
       title:       form.title,
       description: form.description || undefined,
-      assignee:    form.assignee || 'Unassigned',
+      assignees:   form.assignee ? [form.assignee] : [],
       sprintId:    form.sprintId || undefined,
       parentId:    form.parentId || undefined,
       storyPoints: form.storyPoints ? parseInt(form.storyPoints) : undefined,
@@ -120,8 +128,8 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
       startDate:   form.startDate || sprint?.startDate || today,
       dueDate:     form.dueDate || sprint?.endDate || today,
       priority:    form.priority,
-      codeReviewer:form.codeReviewer || undefined,
-      qaTester:    form.qaTester || undefined,
+      codeReviewerId:form.codeReviewer || undefined,
+      qaTesterId:    form.qaTester || undefined,
       effort:      1,
       specLink:    form.specLink  || undefined,
       figmaLink:   form.figmaLink || undefined,
@@ -130,6 +138,9 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
       targetReleaseDate: form.targetReleaseDate || undefined,
       // Bug
       bugEnvironment: (form.bugEnvironment as Task['bugEnvironment']) || undefined,
+      bugPlatform:    form.bugPlatform,
+      bugDevices:     form.bugDevices,
+      bugOsVersions:  form.bugOsVersions,
       bugSteps:       form.bugSteps    || undefined,
       bugExpected:    form.bugExpected || undefined,
       bugActual:      form.bugActual   || undefined,
@@ -353,6 +364,35 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                         <option value="Dev">🟢 Dev</option>
                       </select>
                     </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">Platform</label>
+                        <MultiSelectDropdown
+                          options={PLATFORM_OPTIONS}
+                          selectedValues={form.bugPlatform}
+                          onChange={(vals) => set('bugPlatform', vals as any)}
+                          placeholder="Select Platform"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">Device</label>
+                        <MultiSelectDropdown
+                          options={DEVICE_OPTIONS}
+                          selectedValues={form.bugDevices}
+                          onChange={(vals) => set('bugDevices', vals as any)}
+                          placeholder="Select Device"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">OS Version</label>
+                        <MultiSelectDropdown
+                          options={OS_OPTIONS}
+                          selectedValues={form.bugOsVersions}
+                          onChange={(vals) => set('bugOsVersions', vals as any)}
+                          placeholder="Select OS Version"
+                        />
+                      </div>
+                    </div>
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">Steps to Reproduce</label>
                       <textarea
@@ -424,8 +464,8 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                       className="block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 bg-white"
                     >
                       <option value="">Unassigned</option>
-                      {devTeam.map(m => (
-                        <option key={m.id} value={m.name}>{m.name} — {m.role}</option>
+                      {profiles.map(m => (
+                        <option key={m.id} value={m.id}>{(m.full_name || m.email)} — {m.role}</option>
                       ))}
                     </select>
                   </div>
@@ -490,8 +530,8 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                           className="block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 bg-white"
                         >
                           <option value="">Unassigned</option>
-                          {devTeam.map(m => (
-                            <option key={m.id} value={m.name}>{m.name} — {m.role}</option>
+                          {profiles.map(m => (
+                            <option key={m.id} value={m.id}>{(m.full_name || m.email)} — {m.role}</option>
                           ))}
                         </select>
                       </div>
@@ -503,8 +543,8 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                           className="block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 bg-white"
                         >
                           <option value="">Unassigned</option>
-                          {devTeam.map(m => (
-                            <option key={m.id} value={m.name}>{m.name} — {m.role}</option>
+                          {profiles.map(m => (
+                            <option key={m.id} value={m.id}>{(m.full_name || m.email)} — {m.role}</option>
                           ))}
                         </select>
                       </div>

@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { X, Users, Plus, Trash2 } from 'lucide-react';
-import { Sprint, DevTeamMember, SprintTeamMember } from '../../types';
+import { Sprint, Profile, SprintTeamMember } from '../../types';
 import { formatHoursToTime } from '../../lib/utils';
 
 interface CreateSprintModalProps {
     sprint?: Sprint;
-    devTeam?: DevTeamMember[];
+    profiles?: Profile[];
     onClose: () => void;
     onSave: (sprint: Sprint) => void;
     nextSprintNumber: number;
 }
 
-export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, devTeam = [], onClose, onSave, nextSprintNumber }) => {
+export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, profiles = [], onClose, onSave, nextSprintNumber }) => {
     const [name, setName] = useState(`Sprint ${nextSprintNumber}`);
     const [goal, setGoal] = useState('');
     const [startDate, setStartDate] = useState('');
@@ -77,25 +77,25 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
     // Auto-calculate capacity based on team days
     const totalCapacity = team.reduce((sum, member) => sum + (member.daysWorking || 0), 0);
 
-    const handleAddTeamMember = (memberId: string) => {
-        if (!memberId) return;
+    const handleAddTeamMember = (profileId: string) => {
+        if (!profileId) return;
 
         // Prevent duplicates
-        if (team.find(m => m.id === memberId)) return;
+        if (team.find(m => m.profileId === profileId)) return;
 
-        const devMember = devTeam.find(m => m.id === memberId);
-        if (devMember) {
+        const devProfile = profiles.find(p => p.id === profileId);
+        if (devProfile) {
             // Default developer working days to the calculated working days of the sprint
-            setTeam([...team, { ...devMember, daysWorking: calculatedWorkingDays || 13 }]);
+            setTeam([...team, { profileId: devProfile.id, daysWorking: calculatedWorkingDays || 13 }]);
         }
     };
 
-    const handleRemoveTeamMember = (id: string) => {
-        setTeam(team.filter(m => m.id !== id));
+    const handleRemoveTeamMember = (profileId: string) => {
+        setTeam(team.filter(m => m.profileId !== profileId));
     };
 
-    const handleUpdateDays = (id: string, daysWorking: number) => {
-        setTeam(team.map(m => m.id === id ? { ...m, daysWorking } : m));
+    const handleUpdateDays = (profileId: string, daysWorking: number) => {
+        setTeam(team.map(m => m.profileId === profileId ? { ...m, daysWorking } : m));
     };
 
     const getEndDayName = () => {
@@ -276,11 +276,13 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
                                 </div>
 
                                 <div className="space-y-3">
-                                    {team.map(member => (
-                                        <div key={member.id} className="flex items-center space-x-3 bg-white p-2 rounded border border-gray-200 shadow-md">
+                                    {team.map(member => {
+                                        const profile = profiles.find(p => p.id === member.profileId);
+                                        return (
+                                        <div key={member.profileId} className="flex items-center space-x-3 bg-white p-2 rounded border border-gray-200 shadow-md">
                                             <div className="flex-1">
-                                                <p className="text-sm font-medium text-gray-900">{member.name}</p>
-                                                <p className="text-xs text-gray-500">{member.role || 'Developer'}</p>
+                                                <p className="text-sm font-medium text-gray-900">{profile ? (profile.full_name || profile.email) : 'Unknown User'}</p>
+                                                <p className="text-xs text-gray-500">{profile?.role || 'Developer'}</p>
                                             </div>
                                             <div className="flex items-center space-x-2">
                                                 <label className="text-xs text-gray-500">Days:</label>
@@ -289,19 +291,19 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
                                                     min="0"
                                                     max="30"
                                                     value={member.daysWorking}
-                                                    onChange={(e) => handleUpdateDays(member.id, Number(e.target.value))}
+                                                    onChange={(e) => handleUpdateDays(member.profileId, Number(e.target.value))}
                                                     className="w-16 p-1 text-sm border border-gray-300 rounded focus:ring-violet-500 focus:border-violet-500"
                                                 />
                                             </div>
                                             <button
                                                 type="button"
-                                                onClick={() => handleRemoveTeamMember(member.id)}
+                                                onClick={() => handleRemoveTeamMember(member.profileId)}
                                                 className="text-gray-400 hover:text-red-500 p-1"
                                             >
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
                                         </div>
-                                    ))}
+                                    )})}
 
                                     {team.length === 0 && (
                                         <p className="text-xs text-gray-500 italic text-center py-2">No team members assigned</p>
@@ -318,8 +320,8 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, de
                                             defaultValue=""
                                         >
                                             <option value="" disabled>Add team member...</option>
-                                            {devTeam.filter(d => !team.find(t => t.id === d.id)).map(d => (
-                                                <option key={d.id} value={d.id}>{d.name} ({d.role})</option>
+                                            {profiles.filter(p => !team.find(t => t.profileId === p.id)).map(p => (
+                                                <option key={p.id} value={p.id}>{p.full_name || p.email} ({p.role})</option>
                                             ))}
                                         </select>
                                         <div className="bg-gray-100 border border-l-0 border-gray-300 rounded-r-md px-3 py-1.5 flex items-center justify-center">

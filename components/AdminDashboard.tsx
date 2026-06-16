@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { User, ShieldAlert, Loader2, Plus, Mail, Shield } from 'lucide-react';
+import { User, ShieldAlert, Loader2, Plus, Mail, Shield, Trash2 } from 'lucide-react';
+
+interface AdminDashboardProps {
+    currentUser?: Profile;
+}
 
 interface Profile {
     id: string;
@@ -10,7 +14,7 @@ interface Profile {
     created_at?: string;
 }
 
-export const AdminDashboard: React.FC = () => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
     const [users, setUsers] = useState<Profile[]>([]);
     const [loading, setLoading] = useState(true);
     const [modalOpen, setModalOpen] = useState(false);
@@ -56,6 +60,33 @@ export const AdminDashboard: React.FC = () => {
             console.error('Role update failed', err);
             alert('Failed to update role');
             fetchUsers(); // Revert on failure
+        }
+    };
+
+    const handleDeleteUser = async (userToDelete: Profile) => {
+        if (!currentUser || !['PM', 'SUPER_ADMIN'].includes(currentUser.role)) {
+            alert('You do not have permission to delete users.');
+            return;
+        }
+
+        if (userToDelete.id === currentUser.id) {
+            alert('You cannot delete your own account.');
+            return;
+        }
+
+        if (window.confirm(`Are you sure you want to permanently delete user "${userToDelete.full_name}" (${userToDelete.email})? This action cannot be undone and will remove all their access.`)) {
+            try {
+                setLoading(true);
+                const { error } = await supabase.rpc('delete_user_admin', { target_user_id: userToDelete.id });
+                if (error) throw error;
+                
+                alert(`User ${userToDelete.full_name} has been deleted.`);
+                fetchUsers();
+            } catch (err: any) {
+                console.error('User deletion failed', err);
+                alert(`Failed to delete user: ${err.message}`);
+                setLoading(false);
+            }
         }
     };
 
@@ -152,6 +183,7 @@ export const AdminDashboard: React.FC = () => {
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">System Role</th>
+                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -186,6 +218,18 @@ export const AdminDashboard: React.FC = () => {
                                                 <option key={r} value={r}>{r}</option>
                                             ))}
                                         </select>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        {currentUser && ['PM', 'SUPER_ADMIN'].includes(currentUser.role) && u.id !== currentUser.id && (
+                                            <button
+                                                onClick={() => handleDeleteUser(u)}
+                                                className="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors flex items-center inline-flex"
+                                                title="Delete User"
+                                            >
+                                                <Trash2 className="w-4 h-4 mr-1.5" />
+                                                Delete
+                                            </button>
+                                        )}
                                     </td>
                                 </tr>
                             ))}

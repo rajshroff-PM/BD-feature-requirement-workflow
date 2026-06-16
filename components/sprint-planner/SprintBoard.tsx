@@ -8,6 +8,7 @@ import { formatHoursToTime, formatDate } from '../../lib/utils';
 interface SprintBoardProps {
     tasks: Task[];
     allTasks: Task[];
+    profiles: import('../../types').Profile[];
     onEditTask: (task: Task) => void;
     onTaskClick: (task: Task) => void;
 }
@@ -20,7 +21,7 @@ const COLUMNS: { id: Task['status']; title: string; headerColor: string; dotColo
     { id: 'Done', title: 'Done', headerColor: 'text-emerald-700 border-emerald-400', dotColor: 'bg-emerald-500' },
 ];
 
-export const SprintBoard: React.FC<SprintBoardProps> = ({ tasks, allTasks, onEditTask, onTaskClick }) => {
+export const SprintBoard: React.FC<SprintBoardProps> = ({ tasks, allTasks, profiles, onEditTask, onTaskClick }) => {
     const [isDragging, setIsDragging] = useState(false);
     const draggedTaskIdRef = useRef<string | null>(null);
 
@@ -142,11 +143,27 @@ export const SprintBoard: React.FC<SprintBoardProps> = ({ tasks, allTasks, onEdi
                                         <div className="flex items-center justify-between text-xs text-gray-500 mt-auto pt-3 border-t border-gray-100">
                                             <div className="flex items-center gap-2">
                                                 {/* Assignee Avatar */}
-                                                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-100 to-violet-200 text-violet-800 flex items-center justify-center font-bold text-[10px] border border-white shadow-sm ring-1 ring-black/5" title={`Assignee: ${task.assignee || 'Unassigned'}`}>
-                                                    {task.assignee ? task.assignee.charAt(0).toUpperCase() : '?'}
-                                                </div>
+                                                {(task.assignees || []).length > 0 ? (
+                                                    <div className="flex -space-x-1.5">
+                                                        {(task.assignees || []).map(assigneeId => {
+                                                            const profile = profiles.find(p => p.id === assigneeId);
+                                                            const name = profile ? (profile.full_name || profile.email) : 'Unknown';
+                                                            return (
+                                                                <div key={assigneeId} className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-100 to-violet-200 text-violet-800 flex items-center justify-center font-bold text-[10px] border border-white shadow-sm ring-1 ring-black/5" title={`Assignee: ${name}`}>
+                                                                    {name ? name.charAt(0).toUpperCase() : '?'}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 text-gray-500 flex items-center justify-center font-bold text-[10px] border border-white shadow-sm ring-1 ring-black/5" title="Unassigned">
+                                                        ?
+                                                    </div>
+                                                )}
                                                 <span className="text-[11px] font-medium text-gray-600 truncate max-w-[100px]">
-                                                    {task.assignee || 'Unassigned'}
+                                                    {(task.assignees || []).length > 0 
+                                                        ? (task.assignees || []).map(id => profiles.find(p => p.id === id)?.full_name || profiles.find(p => p.id === id)?.email || 'Unknown').join(', ')
+                                                        : 'Unassigned'}
                                                 </span>
                                             </div>
                                             <span className="text-[11px] font-medium text-gray-600 bg-gray-100/80 px-2 py-1 rounded-md border border-gray-200 shadow-sm">

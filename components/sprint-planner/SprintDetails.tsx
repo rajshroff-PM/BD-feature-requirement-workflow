@@ -10,7 +10,7 @@ import { CreateSprintModal } from './CreateSprintModal';
 import { SprintBoard } from './SprintBoard';
 import { Badge } from '../Badge';
 import { formatDate, getInitials, formatHoursToTime } from '../../lib/utils';
-import { DevTeamMember } from '../../types';
+import { DevTeamMember, Profile } from '../../types';
 
 interface SprintDetailsProps {
     sprint: Sprint;
@@ -18,7 +18,7 @@ interface SprintDetailsProps {
     allTasks: Task[];       // full task list for parent pickers
     allSprints: Sprint[];   // full sprint list for sprint picker
     backlog: Ticket[];
-    devTeam: DevTeamMember[];
+    profiles: Profile[];
     onBack: () => void;
     onAddTask: (task: Task) => void;
     onEditSprint: (sprint: Sprint) => void;
@@ -30,7 +30,7 @@ interface SprintDetailsProps {
 }
 
 export const SprintDetails: React.FC<SprintDetailsProps> = ({
-    sprint, tasks, allTasks, allSprints, backlog: _backlog, devTeam,
+    sprint, tasks, allTasks, allSprints, backlog: _backlog, profiles,
     onBack, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint,
     currentUser, userRole,
 }) => {
@@ -55,7 +55,11 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
     const nonEpicTasks = tasks.filter(t => t.ticketType !== 'Epic');
     const filteredTasks = nonEpicTasks.filter(t => {
         const matchAssignee = selectedMemberFilter 
-            ? t.assignee.split(',').map(name => name.trim()).includes(selectedMemberFilter)
+            ? (t.assignees || []).some(id => {
+                const p = profiles.find(pr => pr.id === id);
+                const name = p ? (p.full_name || p.email) : '';
+                return name === selectedMemberFilter;
+              })
             : true;
         const matchType = selectedTypeFilter
             ? t.ticketType === selectedTypeFilter
@@ -78,7 +82,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
 
         const rows = tasks.map(t => [
             t.title,
-            t.assignee,
+            (t.assignees || []).map(id => profiles.find(p => p.id === id)?.full_name || profiles.find(p => p.id === id)?.email || 'Unknown').join(', ') || 'Unassigned',
             `${formatDate(t.startDate)} - ${formatDate(t.endDate)}`,
             formatHoursToTime(t.effort * 8) || '0h',
             t.status
@@ -123,7 +127,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
         const tableColumn = ["Task Title", "Assignee", "Schedule", "Effort", "Status"];
         const tableRows = tasks.map(t => [
             t.title,
-            t.assignee,
+            (t.assignees || []).map(id => profiles.find(p => p.id === id)?.full_name || profiles.find(p => p.id === id)?.email || 'Unknown').join(', ') || 'Unassigned',
             `${formatDate(t.startDate)} to ${formatDate(t.endDate)}`,
             formatHoursToTime(t.effort * 8) || '0h',
             t.status
@@ -212,18 +216,21 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
                             <div className="flex items-center pr-4 border-r border-gray-200 shrink-0">
                                 <div className="flex -space-x-2.5 hover:space-x-0.5 transition-all duration-300">
                                     {sprint.team.map((member) => {
-                                        const isSelected = selectedMemberFilter === member.name;
-                                        const memberEffort = tasks.filter(t => (t.assignee || '').split(',').map(n => n.trim()).includes(member.name)).reduce((sum, t) => sum + (t.effort || 0), 0);
+                                        const profile = profiles.find(p => p.id === member.profileId);
+                                        const memberName = profile ? (profile.full_name || profile.email) : 'Unknown';
+                                        const isSelected = selectedMemberFilter === memberName;
+                                        // TODO: fix effort calculation when multiple assignees are mapped by id
+                                        const memberEffort = tasks.filter(t => (t.assignees || []).includes(member.profileId)).reduce((sum, t) => sum + (t.effort || 0), 0);
                                         const memberUtilization = member.daysWorking ? Math.round((memberEffort / member.daysWorking) * 100) : 0;
                                         return (
                                             <div
-                                                key={member.id}
-                                                onClick={() => setSelectedMemberFilter(isSelected ? null : member.name)}
+                                                key={member.profileId}
+                                                onClick={() => setSelectedMemberFilter(isSelected ? null : memberName)}
                                                 className={`h-8 w-8 rounded-full ring-2 ring-white flex items-center justify-center font-bold text-xs cursor-pointer transition-all shadow-sm ${isSelected ? 'bg-violet-600 text-white z-10 scale-110 ring-violet-200' : 'bg-gradient-to-br from-violet-100 to-violet-200 text-violet-800 hover:scale-105'
                                                     } ${selectedMemberFilter && !isSelected ? 'opacity-40 grayscale' : ''}`}
-                                                title={`${member.name} (${memberUtilization}% capacity used) - Click to filter`}
+                                                title={`${memberName} (${memberUtilization}% capacity used) - Click to filter`}
                                             >
-                                                {getInitials(member.name)}
+                                                {getInitials(memberName)}
                                             </div>
                                         );
                                     })}
@@ -250,8 +257,8 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
                                     onChange={(e) => setSelectedMemberFilter(e.target.value || null)}
                                 >
                                     <option value="">All Assignees</option>
-                                    {devTeam.map(member => (
-                                        <option key={member.id} value={member.name}>{member.name}</option>
+                                    {profiles.map(member => (
+                                        <option key={member.id} value={member.full_name || member.email}>{member.full_name || member.email}</option>
                                     ))}
                                 </select>
                             </div>
@@ -425,7 +432,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center text-sm text-gray-600">
-                                            <User className="w-4 h-4 mr-2" /> {task.assignee}
+                                            <User className="w-4 h-4 mr-2" /> {(task.assignees || []).length > 0 ? (task.assignees || []).map(id => profiles.find(p => p.id === id)?.full_name || profiles.find(p => p.id === id)?.email || 'Unknown').join(', ') : 'Unassigned'}
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-600 font-mono">
@@ -468,7 +475,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
                     defaultType={createDefaultType}
                     defaultParentId={createDefaultParent}
                     userRole={userRole || ''}
-                    devTeam={devTeam}
+                    profiles={profiles}
                     onClose={() => setIsCreateOpen(false)}
                     onSave={(task: Task) => {
                         onAddTask(task);
@@ -481,7 +488,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
                 <CreateSprintModal
                     sprint={sprint}
                     nextSprintNumber={0} // Not needed for edit
-                    devTeam={devTeam}
+                    profiles={profiles}
                     onClose={() => setIsEditSprintModalOpen(false)}
                     onSave={(updatedSprint) => {
                         onEditSprint(updatedSprint);
@@ -495,6 +502,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
                     currentUser={currentUser}
                     task={editingTask}
                     sprint={sprint}
+                    profiles={profiles}
                     childTasks={allTasks.filter(t => t.parentId === editingTask.id)}
                     onCreateChild={(parentId) => {
                         setCreateDefaultType(undefined);

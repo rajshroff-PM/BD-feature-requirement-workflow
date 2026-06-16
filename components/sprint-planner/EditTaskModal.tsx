@@ -5,11 +5,17 @@ import { supabase } from '../../supabaseClient';
 import { formatDate, parseTimeToHours, formatHoursToTime } from '../../lib/utils';
 import { Badge } from '../Badge';
 import { TicketTypeBadge } from '../TicketTypeBadge';
+import { MultiSelectDropdown } from '../MultiSelectDropdown';
+
+const PLATFORM_OPTIONS = ['Android', 'iOS', 'Web', 'Backend'];
+const DEVICE_OPTIONS = ['Oppo A38', 'Samsung A32', 'Samsung S10 Lite', 'Pixel 9A', 'iPhone 15', 'iPhone 14', 'iPad Pro', 'Other'];
+const OS_OPTIONS = ['Android 12', 'Android 13', 'Android 14', 'Android 15', 'iOS 17', 'iOS 18', 'iOS 26', 'Other'];
 
 interface EditTaskModalProps {
     currentUser?: any;
     task: Task;
     sprint: Sprint;
+    profiles: import('../../types').Profile[];
     onClose: () => void;
     onSave: (updatedTask: Task) => void;
     onDelete: (taskId: string) => void;
@@ -18,7 +24,7 @@ interface EditTaskModalProps {
     onCreateChild?: (parentId: string) => void;
 }
 
-export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task, sprint, onClose, onSave, onDelete, userRole, childTasks, onCreateChild }) => {
+export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task, sprint, profiles, onClose, onSave, onDelete, userRole, childTasks, onCreateChild }) => {
     const isReadOnly = userRole === 'MANAGEMENT' || userRole === 'BA';
     const isQA = userRole === 'QA';
     // Time tracking
@@ -37,7 +43,7 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
     const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
     const [isLoadingLogs, setIsLoadingLogs] = useState(false);
 
-    const assignees = task.assignee ? task.assignee.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const assignees = task.assignees || [];
 
     // Calculate effort based on dates and assignees
     const calculateEffort = (start: string, end: string, assigneesList: string[], estTimeStr: string) => {
@@ -233,11 +239,10 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
             newAssignees = [...assignees, name];
         }
 
-        const assigneesStr = newAssignees.join(', ');
         const newEffort = calculateEffort(task.startDate, task.dueDate, newAssignees, task.estimatedTime || '');
 
         updateTaskFields({
-            assignee: assigneesStr,
+            assignees: newAssignees,
             effort: newEffort
         });
     };
@@ -318,9 +323,12 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                     }
                                                 }}
                                             >
-                                                {assignees.map(a => (
+                                                {assignees.map(a => {
+                                                    const profile = profiles.find(p => p.id === a);
+                                                    const name = profile ? (profile.full_name || profile.email) : 'Unknown';
+                                                    return (
                                                     <span key={a} className={`inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full ${isReadOnly ? 'bg-gray-200 text-gray-600' : 'bg-violet-100 text-violet-800'}`}>
-                                                        {a}
+                                                        {name}
                                                         {!isReadOnly && (
                                                             <button
                                                                 type="button"
@@ -331,7 +339,7 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                             </button>
                                                         )}
                                                     </span>
-                                                ))}
+                                                )})}
                                                 {!isReadOnly && (
                                                     <input
                                                         id="assignee-search"
@@ -356,25 +364,28 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                             if (filtered.length === 0) {
                                                                 return <div className="px-4 py-3 text-sm text-gray-500 italic">No matching team members found</div>;
                                                             }
-                                                            return filtered.map(m => (
+                                                            return filtered.map(m => {
+                                                                const profile = profiles.find(p => p.id === m.profileId);
+                                                                const name = profile ? (profile.full_name || profile.email) : m.name;
+                                                                return (
                                                                 <div
-                                                                    key={m.id}
+                                                                    key={m.profileId}
                                                                     className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer"
                                                                     onClick={() => {
-                                                                        toggleAssignee(m.name);
+                                                                        toggleAssignee(m.profileId);
                                                                         setAssigneeSearchQuery('');
                                                                         document.getElementById('assignee-search')?.focus();
                                                                     }}
                                                                 >
                                                                     <input
                                                                         type="checkbox"
-                                                                        checked={assignees.includes(m.name)}
+                                                                        checked={assignees.includes(m.profileId)}
                                                                         readOnly
                                                                         className="w-4 h-4 text-violet-600 rounded border-gray-300 mr-3 pointer-events-none"
                                                                     />
-                                                                    <span className="text-sm font-medium text-gray-700">{m.name} <span className="text-gray-500 font-normal text-xs ml-1">({m.role || 'Dev'})</span></span>
+                                                                    <span className="text-sm font-medium text-gray-700">{name} <span className="text-gray-500 font-normal text-xs ml-1">({m.role || 'Dev'})</span></span>
                                                                 </div>
-                                                            ))
+                                                            )})
                                                         })()
                                                     ) : (
                                                         <div className="px-4 py-3 text-sm text-gray-500 italic">No team selected for this sprint</div>
@@ -388,28 +399,32 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                 <label className="block text-sm font-semibold text-gray-700 mb-1">Code Reviewer</label>
                                                 <select
                                                     disabled={isReadOnly}
-                                                    value={task.codeReviewer || ''}
-                                                    onChange={(e) => updateTaskField('codeReviewer', e.target.value)}
+                                                    value={task.codeReviewerId || ''}
+                                                    onChange={(e) => updateTaskField('codeReviewerId', e.target.value)}
                                                     className={`block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-600' : 'bg-white'}`}
                                                 >
                                                     <option value="">Unassigned</option>
-                                                    {sprint.team?.map(m => (
-                                                        <option key={m.id} value={m.name}>{m.name}</option>
-                                                    ))}
+                                                    {sprint.team?.map(m => {
+                                                        const profile = profiles.find(p => p.id === m.profileId);
+                                                        const name = profile ? (profile.full_name || profile.email) : m.name;
+                                                        return <option key={m.profileId} value={m.profileId}>{name}</option>
+                                                    })}
                                                 </select>
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-semibold text-gray-700 mb-1">QA Tester</label>
                                                 <select
                                                     disabled={isReadOnly}
-                                                    value={task.qaTester || ''}
-                                                    onChange={(e) => updateTaskField('qaTester', e.target.value)}
+                                                    value={task.qaTesterId || ''}
+                                                    onChange={(e) => updateTaskField('qaTesterId', e.target.value)}
                                                     className={`block w-full border border-gray-300 rounded-xl shadow-sm px-3 py-2 text-sm focus:ring-violet-500 focus:border-violet-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed text-gray-600' : 'bg-white'}`}
                                                 >
                                                     <option value="">Unassigned</option>
-                                                    {sprint.team?.map(m => (
-                                                        <option key={m.id} value={m.name}>{m.name}</option>
-                                                    ))}
+                                                    {sprint.team?.map(m => {
+                                                        const profile = profiles.find(p => p.id === m.profileId);
+                                                        const name = profile ? (profile.full_name || profile.email) : m.name;
+                                                        return <option key={m.profileId} value={m.profileId}>{name}</option>
+                                                    })}
                                                 </select>
                                             </div>
                                         </div>
@@ -656,6 +671,38 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                             <option value="Verified">Verified</option>
                                                             <option value="Closed">Closed</option>
                                                         </select>
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Platform</label>
+                                                        <MultiSelectDropdown
+                                                            disabled={!isQA && isReadOnly}
+                                                            options={PLATFORM_OPTIONS}
+                                                            selectedValues={task.bugPlatform || []}
+                                                            onChange={(vals) => updateTaskField('bugPlatform', vals)}
+                                                            placeholder="Select Platform"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Device</label>
+                                                        <MultiSelectDropdown
+                                                            disabled={!isQA && isReadOnly}
+                                                            options={DEVICE_OPTIONS}
+                                                            selectedValues={task.bugDevices || []}
+                                                            onChange={(vals) => updateTaskField('bugDevices', vals)}
+                                                            placeholder="Select Device"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-semibold text-gray-700 mb-1">OS Version</label>
+                                                        <MultiSelectDropdown
+                                                            disabled={!isQA && isReadOnly}
+                                                            options={OS_OPTIONS}
+                                                            selectedValues={task.bugOsVersions || []}
+                                                            onChange={(vals) => updateTaskField('bugOsVersions', vals)}
+                                                            placeholder="Select OS Version"
+                                                        />
                                                     </div>
                                                 </div>
                                                 <div>

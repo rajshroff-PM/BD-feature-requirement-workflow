@@ -14,7 +14,7 @@ interface SprintPlannerProps {
     sprints: Sprint[];
     tasks: Task[];
     tickets: Ticket[]; // Full ticket list to filter approved backlog
-    devTeam: DevTeamMember[];
+    profiles: import('../../types').Profile[];
     onCreateSprint: (sprint: Sprint) => void;
     onAddTask: (task: Task) => void;
     onEditSprint: (sprint: Sprint) => void;
@@ -24,7 +24,7 @@ interface SprintPlannerProps {
     userRole?: string;
 }
 
-export const SprintPlanner: React.FC<SprintPlannerProps> = ({ currentUser, sprints, tasks, tickets: _tickets, devTeam, onCreateSprint, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint, userRole }) => {
+export const SprintPlanner: React.FC<SprintPlannerProps> = ({ currentUser, sprints, tasks, tickets: _tickets, profiles, onCreateSprint, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint, userRole }) => {
     const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isCreateTicketOpen, setIsCreateTicketOpen] = useState(false);
@@ -62,7 +62,7 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ currentUser, sprin
                 allTasks={tasks}
                 allSprints={sprints}
                 backlog={backlog}
-                devTeam={devTeam}
+                profiles={profiles}
                 onBack={() => setSelectedSprintId(null)}
                 onAddTask={onAddTask}
                 onEditSprint={onEditSprint}
@@ -262,7 +262,7 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ currentUser, sprin
             {isCreateModalOpen && (
                 <CreateSprintModal
                     nextSprintNumber={sprints.length + 1}
-                    devTeam={devTeam}
+                    profiles={profiles}
                     onClose={() => setIsCreateModalOpen(false)}
                     onSave={(sprint) => {
                         onCreateSprint(sprint);
@@ -279,7 +279,7 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ currentUser, sprin
                     defaultParentId={createTicketParentId}
                     defaultType={undefined}
                     userRole={userRole || ''}
-                    devTeam={devTeam}
+                    profiles={profiles}
                     onClose={() => {
                         setIsCreateTicketOpen(false);
                         setCreateTicketParentId(undefined);
@@ -296,7 +296,8 @@ export const SprintPlanner: React.FC<SprintPlannerProps> = ({ currentUser, sprin
                 <EditTaskModal
                     currentUser={currentUser}
                     task={editingTask}
-                    sprint={{ id: '', name: 'Backlog', goal: '', status: 'Planned', startDate: '', endDate: '', capacity: 0, team: devTeam } as any}
+                    sprint={{ id: '', name: 'Backlog', goal: '', status: 'Planned', startDate: '', endDate: '', capacity: 0, team: profiles.map(p => ({ profileId: p.id, daysWorking: 14 })) } as any}
+                    profiles={profiles}
                     childTasks={tasks.filter(t => t.parentId === editingTask.id)}
                     onCreateChild={(parentId) => {
                         setCreateTicketParentId(parentId);

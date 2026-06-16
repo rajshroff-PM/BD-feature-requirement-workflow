@@ -7,10 +7,11 @@ import { Badge } from './Badge';
 interface CapacityTrackerProps {
     sprints: Sprint[];
     tasks: Task[];
+    profiles: import('../types').Profile[];
     onEditSprint: (sprint: Sprint) => void;
 }
 
-export const CapacityTracker: React.FC<CapacityTrackerProps> = ({ sprints, tasks, onEditSprint }) => {
+export const CapacityTracker: React.FC<CapacityTrackerProps> = ({ sprints, tasks, profiles, onEditSprint }) => {
     const activeOrUpcomingSprints = useMemo(() => {
         return sprints.filter(s => s.status === 'Active' || s.status === 'Planned');
     }, [sprints]);
@@ -40,7 +41,7 @@ export const CapacityTracker: React.FC<CapacityTrackerProps> = ({ sprints, tasks
         if (!sprint || !sprint.team) return;
 
         const updatedTeam = sprint.team.map(m => {
-            if (m.id !== memberId) return m;
+            if (m.profileId !== memberId) return m;
 
             const currentDates = m.presentDates || [];
             let newDates: string[];
@@ -74,13 +75,12 @@ export const CapacityTracker: React.FC<CapacityTrackerProps> = ({ sprints, tasks
 
         const memberTasks = tasks.filter(t =>
             t.sprintId === sprint.id &&
-            t.assignee &&
-            t.assignee.includes(member.name)
+            (t.assignees || []).includes(member.profileId)
         );
 
         let usedDays = 0;
         memberTasks.forEach(t => {
-            const assignees = t.assignee ? t.assignee.split(',').map(s => s.trim()).filter(Boolean) : [];
+            const assignees = t.assignees || [];
             const fraction = assignees.length > 0 ? 1 / assignees.length : 1;
             usedDays += (t.effort || 0) * fraction;
         });
@@ -137,6 +137,8 @@ export const CapacityTracker: React.FC<CapacityTrackerProps> = ({ sprints, tasks
                     </div>
                 ) : (
                     sprint.team.map((member) => {
+                        const profile = profiles.find(p => p.id === member.profileId);
+                        const memberName = profile ? (profile.full_name || profile.email) : 'Unknown';
                         const { usedDays, assignedTasks } = getMemberStats(member);
                         const capacityDays = member.daysWorking;
                         const remainingDays = Math.max(0, capacityDays - usedDays);
@@ -147,16 +149,16 @@ export const CapacityTracker: React.FC<CapacityTrackerProps> = ({ sprints, tasks
                         const managedDates = member.presentDates || sprintDates.map(d => d.toISOString().split('T')[0]);
 
                         return (
-                            <div key={member.id} className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden text-left relative flex flex-col md:flex-row">
+                            <div key={member.profileId} className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden text-left relative flex flex-col md:flex-row">
                                 {/* Left Side: Presences / Analytics */}
                                 <div className="p-6 md:w-1/3 border-b md:border-b-0 md:border-r border-gray-100 bg-gray-50/50">
                                     <div className="flex items-center space-x-3 mb-6">
                                         <div className="w-12 h-12 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center font-bold text-lg">
-                                            {member.name.substring(0, 2).toUpperCase()}
+                                            {memberName ? memberName.substring(0, 2).toUpperCase() : '?'}
                                         </div>
                                         <div>
-                                            <h3 className="text-lg font-bold text-gray-900">{member.name}</h3>
-                                            <p className="text-xs text-gray-500">{member.role || 'Developer'}</p>
+                                            <h3 className="text-lg font-bold text-gray-900">{memberName}</h3>
+                                            <p className="text-xs text-gray-500">{profile?.role || 'Developer'}</p>
                                         </div>
                                     </div>
 
@@ -212,7 +214,7 @@ export const CapacityTracker: React.FC<CapacityTrackerProps> = ({ sprints, tasks
                                                 return (
                                                     <button
                                                         key={dateStr}
-                                                        onClick={() => handleToggleDate(member.id, dateStr)}
+                                                        onClick={() => handleToggleDate(member.profileId, dateStr)}
                                                         className={`flex flex-col items-center justify-center rounded-lg px-3 py-1.5 transition-all outline-none border ${isPresent
                                                             ? 'bg-violet-50 border-violet-200 shadow-sm text-violet-700'
                                                             : 'bg-white border-gray-200 text-gray-400 opacity-60 hover:opacity-100 hover:border-violet-200'
@@ -237,7 +239,7 @@ export const CapacityTracker: React.FC<CapacityTrackerProps> = ({ sprints, tasks
 
                                         {assignedTasks.length === 0 ? (
                                             <p className="text-sm text-gray-500 italic bg-gray-50 p-4 rounded-xl border border-gray-100">
-                                                No tasks assigned to {member.name} in this sprint.
+                                                No tasks assigned to {memberName} in this sprint.
                                             </p>
                                         ) : (
                                             <div className="space-y-2 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">

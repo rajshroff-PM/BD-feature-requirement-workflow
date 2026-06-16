@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, Trash2, Pencil, X, Save, ShieldAlert, Loader2, ArrowLeft } from 'lucide-react';
+import { Users, ShieldAlert, Loader2, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { DevTeamMember } from '../types';
+import { Profile } from '../types';
 import { supabase } from '../supabaseClient';
-import { Badge } from './Badge';
 import { getInitials } from '../lib/utils';
 
 interface ManageDevTeamProps {
@@ -12,15 +11,8 @@ interface ManageDevTeamProps {
 
 export const ManageDevTeam: React.FC<ManageDevTeamProps> = ({ onClose }) => {
     const navigate = useNavigate();
-    const [team, setTeam] = useState<DevTeamMember[]>([]);
+    const [team, setTeam] = useState<Profile[]>([]);
     const [loading, setLoading] = useState(true);
-    const [isSaving, setIsSaving] = useState(false);
-
-    // Add/Edit State
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingMember, setEditingMember] = useState<DevTeamMember | null>(null);
-    const [formData, setFormData] = useState({ name: '', role: '' });
-    const [error, setError] = useState('');
 
     useEffect(() => {
         fetchTeam();
@@ -29,72 +21,17 @@ export const ManageDevTeam: React.FC<ManageDevTeamProps> = ({ onClose }) => {
     const fetchTeam = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase.from('dev_team').select('*').order('name', { ascending: true });
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .in('role', ['DEV', 'DEV_LEAD', 'QA'])
+                .order('full_name', { ascending: true });
             if (error) throw error;
             setTeam(data || []);
         } catch (err) {
-            console.error('Error fetching dev team:', err);
+            console.error('Error fetching dev team profiles:', err);
         } finally {
             setLoading(false);
-        }
-    };
-
-    const handleOpenModal = (member?: DevTeamMember) => {
-        setError('');
-        if (member) {
-            setEditingMember(member);
-            setFormData({ name: member.name, role: member.role || '' });
-        } else {
-            setEditingMember(null);
-            setFormData({ name: '', role: '' });
-        }
-        setIsModalOpen(true);
-    };
-
-    const handleSave = async () => {
-        if (!formData.name.trim()) {
-            setError('Name is required');
-            return;
-        }
-
-        setIsSaving(true);
-        setError('');
-
-        try {
-            if (editingMember) {
-                const { error: updateError } = await supabase
-                    .from('dev_team')
-                    .update({ name: formData.name, role: formData.role })
-                    .eq('id', editingMember.id);
-                if (updateError) throw updateError;
-            } else {
-                const { error: insertError } = await supabase
-                    .from('dev_team')
-                    .insert([{ name: formData.name, role: formData.role }]);
-                if (insertError) throw insertError;
-            }
-            await fetchTeam();
-            setIsModalOpen(false);
-        } catch (err: any) {
-            console.error('Error saving team member:', err);
-            setError(err.message || 'Failed to save');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleDelete = async (id: string, name: string) => {
-        if (!window.confirm(`Are you sure you want to remove ${name} from the dev team?`)) {
-            return;
-        }
-
-        try {
-            const { error } = await supabase.from('dev_team').delete().eq('id', id);
-            if (error) throw error;
-            setTeam(prev => prev.filter(m => m.id !== id));
-        } catch (err) {
-            console.error('Error deleting team member:', err);
-            alert('Failed to delete member');
         }
     };
 
@@ -111,23 +48,14 @@ export const ManageDevTeam: React.FC<ManageDevTeamProps> = ({ onClose }) => {
                     <div className="flex items-center space-x-3">
                         <Users className="w-8 h-8 text-violet-600 mr-2" />
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-900">Manage Dev Team</h1>
-                            <p className="text-gray-500 mt-1">Configure team members to allocate them in sprints</p>
+                            <h1 className="text-2xl font-bold text-gray-900">View Dev Team</h1>
+                            <p className="text-gray-500 mt-1">Onboarded users with DEV or QA roles available for sprints</p>
                         </div>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                        <button
-                            onClick={() => handleOpenModal()}
-                            className="flex items-center space-x-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-2xl shadow-md transition-all"
-                        >
-                            <Plus className="h-4 w-4" />
-                            <span>Add Member</span>
-                        </button>
                     </div>
                 </div>
 
                 {/* Content */}
-                <div className="min-h-[400px]">
+                <div className="min-h-[400px] mt-8">
                     {loading ? (
                         <div className="flex flex-col items-center justify-center h-64">
                             <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
@@ -136,15 +64,8 @@ export const ManageDevTeam: React.FC<ManageDevTeamProps> = ({ onClose }) => {
                     ) : team.length === 0 ? (
                         <div className="bg-white border-2 border-dashed border-gray-300 rounded-xl p-12 text-center">
                             <ShieldAlert className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                            <h3 className="text-lg font-medium text-gray-900">No team members</h3>
-                            <p className="mt-1 text-gray-500 max-w-sm mx-auto">Add developers here so PMs can assign them to sprints and track capacity.</p>
-                            <button
-                                onClick={() => handleOpenModal()}
-                                className="mt-6 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-xl shadow-md text-white bg-violet-600 hover:bg-violet-700"
-                            >
-                                <Plus className="w-4 h-4 mr-2" />
-                                Add First Member
-                            </button>
+                            <h3 className="text-lg font-medium text-gray-900">No developers onboarded</h3>
+                            <p className="mt-1 text-gray-500 max-w-sm mx-auto">Users who sign up and are assigned the DEV or QA role will automatically appear here.</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -152,25 +73,17 @@ export const ManageDevTeam: React.FC<ManageDevTeamProps> = ({ onClose }) => {
                                 <div key={member.id} className="bg-white rounded-xl shadow-md border border-gray-200 p-5 hover:shadow-lg transition-shadow group">
                                     <div className="flex justify-between items-start">
                                         <div className="flex items-center space-x-3">
-                                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-violet-100 to-purple-100 flex items-center justify-center border border-violet-200 flex-shrink-0">
-                                                <span className="text-violet-700 font-bold text-lg">{getInitials(member.name)}</span>
-                                            </div>
+                                            {member.avatar_url ? (
+                                                <img src={member.avatar_url} alt={member.full_name || 'User'} className="h-10 w-10 rounded-full border border-gray-200 object-cover flex-shrink-0" />
+                                            ) : (
+                                                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-violet-100 to-purple-100 flex items-center justify-center border border-violet-200 flex-shrink-0">
+                                                    <span className="text-violet-700 font-bold text-lg">{getInitials(member.full_name || 'Unknown')}</span>
+                                                </div>
+                                            )}
                                             <div>
-                                                <h4 className="font-bold text-gray-900 line-clamp-1">{member.name}</h4>
-                                                {member.role ? (
-                                                    <span className="text-sm text-gray-500 font-medium">{member.role}</span>
-                                                ) : (
-                                                    <span className="text-sm text-gray-400 italic">No role specified</span>
-                                                )}
+                                                <h4 className="font-bold text-gray-900 line-clamp-1">{member.full_name || member.email}</h4>
+                                                <span className="text-sm text-gray-500 font-medium">{member.role}</span>
                                             </div>
-                                        </div>
-                                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1">
-                                            <button onClick={() => handleOpenModal(member)} className="p-1.5 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-xl transition-colors" title="Edit">
-                                                <Pencil className="w-4 h-4" />
-                                            </button>
-                                            <button onClick={() => handleDelete(member.id, member.name)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors" title="Remove">
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -178,75 +91,6 @@ export const ManageDevTeam: React.FC<ManageDevTeamProps> = ({ onClose }) => {
                         </div>
                     )}
                 </div>
-
-                {/* Add/Edit Sub-Modal */}
-                {isModalOpen && (
-                    <div className="fixed inset-0 z-[60] overflow-y-auto">
-                        <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-                            <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => !isSaving && setIsModalOpen(false)}></div>
-
-                            <div className="inline-block w-full max-w-md my-8 overflow-hidden text-left align-middle transition-all transform bg-white rounded-xl shadow-xl">
-                                <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center">
-                                    <h3 className="text-lg font-bold text-gray-900">{editingMember ? 'Edit Team Member' : 'Add Team Member'}</h3>
-                                    <button onClick={() => !isSaving && setIsModalOpen(false)} className="text-gray-400 hover:text-gray-500">
-                                        <X className="w-5 h-5" />
-                                    </button>
-                                </div>
-
-                                <div className="px-6 py-5 space-y-4">
-                                    {error && (
-                                        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-2xl text-sm">
-                                            {error}
-                                        </div>
-                                    )}
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Developer Name <span className="text-red-500">*</span></label>
-                                        <input
-                                            type="text"
-                                            placeholder="e.g. Jane Doe"
-                                            value={formData.name}
-                                            onChange={(e) => setFormData(p => ({ ...p, name: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-xl shadow-md focus:ring-violet-500 focus:border-violet-500 outline-none transition-colors"
-                                            disabled={isSaving}
-                                            autoFocus
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Role / Title (Optional)</label>
-                                        <input
-                                            type="text"
-                                            placeholder="e.g. Backend Developer"
-                                            value={formData.role}
-                                            onChange={(e) => setFormData(p => ({ ...p, role: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-xl shadow-md focus:ring-violet-500 focus:border-violet-500 outline-none transition-colors"
-                                            disabled={isSaving}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="px-6 py-4 bg-gray-50 flex justify-end space-x-3 border-t border-gray-100">
-                                    <button
-                                        onClick={() => setIsModalOpen(false)}
-                                        disabled={isSaving}
-                                        className="px-4 py-2 border border-gray-300 rounded-xl shadow-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        onClick={handleSave}
-                                        disabled={isSaving || !formData.name.trim()}
-                                        className="inline-flex justify-center items-center px-4 py-2 border border-transparent rounded-xl shadow-md text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500 disabled:opacity-50"
-                                    >
-                                        {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                                        {isSaving ? 'Saving...' : 'Save Member'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );
