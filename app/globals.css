@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@source "../components";
+@source "../app";
+
+body {
+  font-family: 'Outfit', sans-serif;
+  background-color: #f8fafc; /* slate-50 */
+  color: #0f172a; /* slate-900 */
+}

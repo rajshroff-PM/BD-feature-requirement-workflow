@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { Sprint, Task, Ticket, TicketType } from '../../types';
 import { ChevronLeft, Plus, Calendar, User, Pencil, Trash2, Download, X, Filter, CheckCircle2, Bug as BugIcon, LayoutList, LayoutGrid } from 'lucide-react';
 import { TicketTypeBadge } from '../TicketTypeBadge';
@@ -34,6 +35,9 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
     onBack, onAddTask, onEditSprint, onEditTask, onDeleteTask, onDeleteSprint,
     currentUser, userRole,
 }) => {
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
     const [isCreateOpen, setIsCreateOpen]         = useState(false);
     const [createDefaultType, setCreateDefaultType]   = useState<TicketType | undefined>(undefined);
     const [createDefaultParent, setCreateDefaultParent] = useState<string | undefined>(undefined);
@@ -42,6 +46,27 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
     const [selectedMemberFilter, setSelectedMemberFilter] = useState<string | null>(null);
     const [selectedTypeFilter, setSelectedTypeFilter] = useState<TicketType | null>(null);
     const [viewMode, setViewMode] = useState<'list' | 'board'>('board');
+
+    useEffect(() => {
+        const ticketId = searchParams.get('ticket');
+        if (ticketId) {
+            const task = tasks.find(t => t.id === ticketId || t.ticketId === ticketId);
+            if (task && (!editingTask || editingTask.id !== task.id)) {
+                setEditingTask(task);
+            }
+        } else if (editingTask) {
+             setEditingTask(null);
+        }
+    }, [searchParams, tasks]);
+
+    const handleSetEditingTask = (task: Task | null) => {
+        if (task) {
+            router.push(`${pathname}?ticket=${task.id}`, { scroll: false });
+        } else {
+            router.push(pathname, { scroll: false });
+        }
+    };
+
     // Calculate Utilization
     const totalEffort = tasks.reduce((sum, task) => sum + task.effort, 0);
     const utilization = Math.round((totalEffort / sprint.capacity) * 100);
@@ -67,8 +92,8 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
         return matchAssignee && matchType;
     });
 
-    const canManageTasks = userRole === 'PM' || userRole === 'DEV' || userRole === 'DEV_LEAD';
-    const canManageSprintSettings = userRole === 'PM' || userRole === 'DEV_LEAD';
+    const canManageTasks = currentUser?.permissions?.create_tickets ?? (userRole === 'PM' || userRole === 'DEV' || userRole === 'DEV_LEAD');
+    const canManageSprintSettings = currentUser?.permissions?.edit_sprints || currentUser?.permissions?.delete_sprints || (userRole === 'PM' || userRole === 'DEV_LEAD');
 
     const exportToCSV = () => {
         const headers = [`Sprint: ${sprint.name}`];
@@ -83,7 +108,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
         const rows = tasks.map(t => [
             t.title,
             (t.assignees || []).map(id => profiles.find(p => p.id === id)?.full_name || profiles.find(p => p.id === id)?.email || 'Unknown').join(', ') || 'Unassigned',
-            `${formatDate(t.startDate)} - ${formatDate(t.endDate)}`,
+            `${formatDate(t.startDate)} - ${formatDate(t.dueDate)}`,
             formatHoursToTime(t.effort * 8) || '0h',
             t.status
         ]);
@@ -128,7 +153,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
         const tableRows = tasks.map(t => [
             t.title,
             (t.assignees || []).map(id => profiles.find(p => p.id === id)?.full_name || profiles.find(p => p.id === id)?.email || 'Unknown').join(', ') || 'Unassigned',
-            `${formatDate(t.startDate)} to ${formatDate(t.endDate)}`,
+            `${formatDate(t.startDate)} to ${formatDate(t.dueDate)}`,
             formatHoursToTime(t.effort * 8) || '0h',
             t.status
         ]);
@@ -184,24 +209,28 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
                             <>
                                 <div className="w-px h-8 bg-gray-300 hidden sm:block"></div>
                                 <div className="flex items-center gap-2 ml-auto md:ml-0">
-                                    <button
-                                        onClick={() => setIsEditSprintModalOpen(true)}
-                                        className="p-2 bg-white border border-gray-200 shadow-sm rounded-xl text-gray-500 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50 transition-all flex items-center justify-center"
-                                        title="Edit Sprint"
-                                    >
-                                        <Pencil className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            if (window.confirm(`Are you sure you want to delete the sprint "${sprint.name}"? All associated tasks will be removed.`)) {
-                                                if (onDeleteSprint) onDeleteSprint(sprint.id);
-                                            }
-                                        }}
-                                        className="p-2 bg-white border border-gray-200 shadow-sm rounded-xl text-gray-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-all flex items-center justify-center"
-                                        title="Delete Sprint"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
+                                    {(currentUser?.permissions?.edit_sprints ?? (userRole === 'PM' || userRole === 'DEV_LEAD')) && (
+                                        <button
+                                            onClick={() => setIsEditSprintModalOpen(true)}
+                                            className="p-2 bg-white border border-gray-200 shadow-sm rounded-xl text-gray-500 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50 transition-all flex items-center justify-center"
+                                            title="Edit Sprint"
+                                        >
+                                            <Pencil className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                    {(currentUser?.permissions?.delete_sprints ?? (userRole === 'PM' || userRole === 'DEV_LEAD')) && (
+                                        <button
+                                            onClick={() => {
+                                                if (window.confirm(`Are you sure you want to delete the sprint "${sprint.name}"? All associated tasks will be removed.`)) {
+                                                    if (onDeleteSprint) onDeleteSprint(sprint.id);
+                                                }
+                                            }}
+                                            className="p-2 bg-white border border-gray-200 shadow-sm rounded-xl text-gray-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-all flex items-center justify-center"
+                                            title="Delete Sprint"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    )}
                                 </div>
                             </>
                         )}
@@ -325,7 +354,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
                                 <span>Create</span>
                             </button>
                         )}
-                        {userRole === 'QA' && (
+                        {(currentUser?.permissions?.file_bugs ?? (userRole === 'QA')) && (
                             <button
                                 onClick={() => { setCreateDefaultType('Bug'); setCreateDefaultParent(undefined); setIsCreateOpen(true); }}
                                 className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl shadow-sm transition-all text-sm font-semibold"
@@ -360,12 +389,13 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
                             )}
                         </div>
                     ) : (
-                        <SprintBoard
-                            tasks={filteredTasks}
-                            allTasks={allTasks}
-                            onEditTask={onEditTask}
-                            onTaskClick={(task) => setEditingTask(task)}
-                        />
+                            <SprintBoard
+                                tasks={filteredTasks}
+                                allTasks={allTasks}
+                                profiles={profiles}
+                                onEditTask={onEditTask}
+                                onTaskClick={(task) => handleSetEditingTask(task)}
+                            />
                     )}
                 </div>
             ) : (
@@ -407,7 +437,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
                                 <tr
                                     key={task.id}
                                     className="hover:bg-gray-50 cursor-pointer"
-                                    onClick={() => setEditingTask(task)}
+                                    onClick={() => handleSetEditingTask(task)}
                                 >
                                     <td className="px-6 py-4 text-sm font-medium text-gray-500">
                                         {index + 1}
@@ -436,7 +466,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-600 font-mono">
-                                        {formatDate(task.startDate)} → {formatDate(task.endDate)}
+                                        {formatDate(task.startDate)} → {formatDate(task.dueDate)}
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-600">
                                         {formatHoursToTime(task.effort * 8) || '0h'}
@@ -448,9 +478,9 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
                                     </td>
                                     <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                                         <div className="flex items-center justify-end gap-2">
-                                            {canManageTasks && (
+                                            {(currentUser?.permissions?.edit_tickets ?? canManageTasks) && (
                                                 <button
-                                                    onClick={() => setEditingTask(task)}
+                                                    onClick={() => handleSetEditingTask(task)}
                                                     className="text-gray-400 hover:text-violet-600 transition-colors"
                                                     title="Edit Task"
                                                 >
@@ -475,6 +505,7 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
                     defaultType={createDefaultType}
                     defaultParentId={createDefaultParent}
                     userRole={userRole || ''}
+                    currentUser={currentUser}
                     profiles={profiles}
                     onClose={() => setIsCreateOpen(false)}
                     onSave={(task: Task) => {
@@ -509,14 +540,14 @@ export const SprintDetails: React.FC<SprintDetailsProps> = ({
                         setCreateDefaultParent(parentId);
                         setIsCreateOpen(true);
                     }}
-                    onClose={() => setEditingTask(null)}
+                    onClose={() => handleSetEditingTask(null)}
                     onSave={(updatedTask) => {
                         onEditTask(updatedTask);
                         setEditingTask(updatedTask);
                     }}
                     onDelete={(taskId) => {
                         onDeleteTask(taskId);
-                        setEditingTask(null);
+                        handleSetEditingTask(null);
                     }}
                     userRole={userRole}
                 />

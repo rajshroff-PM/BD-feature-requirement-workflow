@@ -184,9 +184,10 @@ export const CreateSprintModal: React.FC<CreateSprintModalProps> = ({ sprint, pr
         <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
                 <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose}></div>
-                <div className="inline-block w-full max-w-md my-8 overflow-hidden text-left align-middle transition-all transform bg-white rounded-2xl shadow-xl">
+                <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+                <div className="relative z-10 inline-block w-full max-w-md my-8 overflow-hidden text-left align-middle transition-all transform bg-white rounded-2xl shadow-xl">
                     <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                        <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg leading-6 font-medium text-gray-900">
                                 {sprint ? 'Edit Sprint' : 'Create New Sprint'}
                             </h3>

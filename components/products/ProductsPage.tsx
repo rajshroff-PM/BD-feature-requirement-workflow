@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Product, Feature } from '../../types';
 import { Package, Plus, X, ChevronRight, LayoutGrid, Edit3, Trash2, AlertTriangle, RotateCcw, ArrowLeft } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { FeaturesPage } from './FeaturesPage';
 
 interface ProductsPageProps {
@@ -25,7 +25,7 @@ export const ProductsPage: React.FC<ProductsPageProps> = ({
     onDeleteFeature,
     onUploadImage
 }) => {
-    const navigate = useNavigate();
+    const router = useRouter();
     const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -142,7 +142,7 @@ export const ProductsPage: React.FC<ProductsPageProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in duration-500">
             <div className="mb-8">
                 <button
-                    onClick={() => navigate(-1)}
+                    onClick={() => router.back()}
                     className="flex items-center text-sm font-medium text-gray-500 hover:text-violet-600 transition-colors mb-4"
                 >
                     <ArrowLeft className="w-4 h-4 mr-1" /> Back

@@ -23,12 +23,31 @@ export type Role = 'SUPER_ADMIN' | 'BD' | 'MANAGEMENT' | 'BA' | 'PM' | 'DEV' | '
 
 export type BadgeColor = 'gray' | 'blue' | 'green' | 'yellow' | 'red' | 'purple';
 
+export interface RolePermissions {
+  role: Role;
+  view_sprint_planner: boolean;
+  view_capacity_tracker: boolean;
+  view_analytics: boolean;
+  view_products: boolean;
+  view_team: boolean;
+  view_admin_dashboard: boolean;
+  view_access_management: boolean;
+  create_sprints: boolean;
+  edit_sprints: boolean;
+  delete_sprints: boolean;
+  create_tickets: boolean;
+  file_bugs: boolean;
+  edit_tickets: boolean;
+  delete_tickets: boolean;
+}
+
 // ── Users ─────────────────────────────────────────────────────────────────────
 
 export interface User {
   id?: string;
   role: Role;
   name?: string;
+  permissions?: RolePermissions;
 }
 
 export interface Profile {

@@ -63,6 +63,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
         }
     };
 
+
     const handleDeleteUser = async (userToDelete: Profile) => {
         if (!currentUser || !['PM', 'SUPER_ADMIN'].includes(currentUser.role)) {
             alert('You do not have permission to delete users.');

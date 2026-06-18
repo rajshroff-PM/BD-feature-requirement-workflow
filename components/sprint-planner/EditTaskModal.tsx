@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Clock, User as UserIcon, Link, AlertTriangle, Plus } from 'lucide-react';
+import { X, Clock, User as UserIcon, Link, AlertTriangle, Plus, Trash2 } from 'lucide-react';
 import { Task, Sprint, TaskLog } from '../../types';
 import { supabase } from '../../supabaseClient';
 import { formatDate, parseTimeToHours, formatHoursToTime } from '../../lib/utils';
@@ -25,8 +25,8 @@ interface EditTaskModalProps {
 }
 
 export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task, sprint, profiles, onClose, onSave, onDelete, userRole, childTasks, onCreateChild }) => {
-    const isReadOnly = userRole === 'MANAGEMENT' || userRole === 'BA';
-    const isQA = userRole === 'QA';
+    const isReadOnly = !(currentUser?.permissions?.edit_tickets ?? (userRole !== 'MANAGEMENT' && userRole !== 'BA'));
+    const isQA = currentUser?.permissions?.file_bugs ?? (userRole === 'QA');
     // Time tracking
     const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
     const [timeSpentInput, setTimeSpentInput] = useState('');
@@ -42,6 +42,7 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
     const [activeTab, setActiveTab] = useState<'details' | 'history'>('details');
     const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
     const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+    const [showCopied, setShowCopied] = useState(false);
 
     const assignees = task.assignees || [];
 
@@ -251,12 +252,10 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
 
 
     return (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-                <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose}></div>
-                <div className="inline-block w-full max-w-4xl my-8 overflow-hidden text-left align-middle transition-all transform bg-white rounded-2xl shadow-xl">
-                    <div className="bg-white px-6 pt-6 pb-6 w-full">
-                        <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-gray-500/75" onClick={onClose}>
+            <div className="relative w-full max-w-4xl max-h-[95vh] overflow-y-auto bg-white rounded-2xl shadow-xl flex flex-col" style={{ backgroundColor: '#ffffff' }} onClick={(e) => e.stopPropagation()}>
+                <div className="px-6 pt-6 pb-6 w-full bg-white rounded-2xl">
+                    <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
                             <div className="flex items-center space-x-6">
                                 <div className="flex items-center gap-3">
                                     <TicketTypeBadge type={task.ticketType || 'Task'} size="md" />
@@ -277,7 +276,21 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                     </button>
                                 </div>
                             </div>
-                            <button type="button" onClick={onClose}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
+                            <div className="flex items-center space-x-3">
+                                <button
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(window.location.href);
+                                        setShowCopied(true);
+                                        setTimeout(() => setShowCopied(false), 2000);
+                                    }}
+                                    className="flex items-center space-x-1.5 px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors border border-transparent hover:border-violet-100"
+                                    title="Copy Link to this Ticket"
+                                >
+                                    <Link className="w-4 h-4" />
+                                    <span>{showCopied ? 'Copied!' : 'Copy Link'}</span>
+                                </button>
+                                <button type="button" onClick={onClose}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
+                            </div>
                         </div>
 
                         <div className="space-y-4">
@@ -360,13 +373,17 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                 <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto py-1">
                                                     {sprint.team && sprint.team.length > 0 ? (
                                                         (() => {
-                                                            const filtered = sprint.team.filter(m => m.name.toLowerCase().includes(assigneeSearchQuery.toLowerCase()));
+                                                            const filtered = sprint.team.filter(m => {
+                                                                const profile = profiles.find(p => p.id === m.profileId);
+                                                                const memberName = profile?.full_name || profile?.email || '';
+                                                                return memberName.toLowerCase().includes((assigneeSearchQuery || '').toLowerCase());
+                                                            });
                                                             if (filtered.length === 0) {
                                                                 return <div className="px-4 py-3 text-sm text-gray-500 italic">No matching team members found</div>;
                                                             }
                                                             return filtered.map(m => {
                                                                 const profile = profiles.find(p => p.id === m.profileId);
-                                                                const name = profile ? (profile.full_name || profile.email) : m.name;
+                                                                const name = profile ? (profile.full_name || profile.email) : 'Unknown';
                                                                 return (
                                                                 <div
                                                                     key={m.profileId}
@@ -383,7 +400,7 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                                         readOnly
                                                                         className="w-4 h-4 text-violet-600 rounded border-gray-300 mr-3 pointer-events-none"
                                                                     />
-                                                                    <span className="text-sm font-medium text-gray-700">{name} <span className="text-gray-500 font-normal text-xs ml-1">({m.role || 'Dev'})</span></span>
+                                                                    <span className="text-sm font-medium text-gray-700">{name} <span className="text-gray-500 font-normal text-xs ml-1">({profile?.role || 'Dev'})</span></span>
                                                                 </div>
                                                             )})
                                                         })()
@@ -406,7 +423,7 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                     <option value="">Unassigned</option>
                                                     {sprint.team?.map(m => {
                                                         const profile = profiles.find(p => p.id === m.profileId);
-                                                        const name = profile ? (profile.full_name || profile.email) : m.name;
+                                                        const name = profile ? (profile.full_name || profile.email) : 'Unknown';
                                                         return <option key={m.profileId} value={m.profileId}>{name}</option>
                                                     })}
                                                 </select>
@@ -422,7 +439,7 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                     <option value="">Unassigned</option>
                                                     {sprint.team?.map(m => {
                                                         const profile = profiles.find(p => p.id === m.profileId);
-                                                        const name = profile ? (profile.full_name || profile.email) : m.name;
+                                                        const name = profile ? (profile.full_name || profile.email) : 'Unknown';
                                                         return <option key={m.profileId} value={m.profileId}>{name}</option>
                                                     })}
                                                 </select>
@@ -1001,9 +1018,9 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                 </div>
                             )}
 
-                            <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end">
-                                <div className="flex gap-3">
-                                    {!isReadOnly && (
+                            <div className="flex justify-between items-center px-6 py-4 border-t border-gray-100 bg-gray-50/50 mt-6 rounded-b-2xl">
+                                <div>
+                                    {(currentUser?.permissions?.delete_tickets ?? (!isReadOnly && userRole !== 'DEV')) && (
                                         <button
                                             type="button"
                                             onClick={() => {
@@ -1011,24 +1028,24 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ currentUser, task,
                                                     onDelete(task.id);
                                                 }
                                             }}
-                                            className="inline-flex justify-center items-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-red-50 text-sm font-medium text-red-700 hover:bg-red-100 focus:outline-none transition-colors"
+                                            className="text-red-600 hover:text-red-800 font-semibold text-sm transition-colors flex items-center"
                                         >
+                                            <Trash2 className="w-4 h-4 mr-1.5" />
                                             Delete Task
                                         </button>
                                     )}
-                                    <button
-                                        type="button"
-                                        onClick={onClose}
-                                        className="inline-flex justify-center items-center rounded-xl border border-transparent shadow-md px-5 py-2 bg-violet-600 text-sm font-medium text-white hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500 transition-colors"
-                                    >
-                                        Done
-                                    </button>
                                 </div>
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="bg-violet-600 hover:bg-violet-700 text-white px-6 py-2 rounded-xl shadow-sm transition-all font-semibold text-sm"
+                                >
+                                    Done
+                                </button>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
     );
 };

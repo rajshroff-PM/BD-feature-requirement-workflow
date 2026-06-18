@@ -15,6 +15,7 @@ interface CreateTicketModalProps {
   defaultType?: TicketType;      // Skip type picker (e.g. QA always gets Bug)
   profiles: import('../../types').Profile[];
   userRole?: string;
+  currentUser: import('../../types').User;
   onSave: (task: Task) => void;
   onClose: () => void;
 }
@@ -51,9 +52,20 @@ const ID_PREFIX: Record<TicketType, string> = {
 
 export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   allTasks, allSprints, defaultSprintId, defaultParentId, defaultType,
-  profiles, userRole, onSave, onClose,
+  profiles, userRole, currentUser, onSave, onClose,
 }) => {
-  const allowedTypesBase = ALLOWED_TYPES[userRole || ''] || [];
+  let allowedTypesBase: TicketType[] = [];
+  if (currentUser?.permissions) {
+      if (currentUser.permissions.create_tickets) {
+          allowedTypesBase.push('Epic', 'Story', 'Task', 'Spike');
+      }
+      if (currentUser.permissions.file_bugs) {
+          allowedTypesBase.push('Bug');
+      }
+  } else {
+      allowedTypesBase = ALLOWED_TYPES[userRole || ''] || [];
+  }
+
   const parentTask = defaultParentId ? allTasks.find(t => t.id === defaultParentId) : null;
   const parentType = parentTask?.ticketType;
 
